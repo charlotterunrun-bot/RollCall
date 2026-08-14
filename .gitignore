@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+venv/
+
+# PyInstaller build output
+build/
+dist/
+*.spec.bak
+
+# User/test data and scratch
+test/
+.tmp/
+tmp/
+*_run.py
