@@ -42,6 +42,7 @@ if sys.platform == 'darwin':
         pyz, a.scripts, [], [], [], [],
         name='RollCall', debug=False, bootloader_ignore_signals=False,
         strip=False, upx=False, console=False, target_arch='arm64',
+        exclude_binaries=True,
     )
     collected = COLLECT(exe, a.binaries, a.zipfiles, a.datas, name='RollCall')
     app = BUNDLE(

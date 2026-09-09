@@ -142,7 +142,8 @@ class InitWindow(QWidget):
             if students is None:
                 return
         except AppError as exc:
-            i18n.critical(self, i18n.tr("dialog.import_failed"), error_text(exc))
+            notify = i18n.warning if exc.code == "excel.empty_namelist" else i18n.critical
+            notify(self, i18n.tr("dialog.import_failed"), error_text(exc))
             return
         i18n.information(self, i18n.tr("dialog.complete"), i18n.tr("status.imported_students", count=len(students)))
         self.initialized.emit()

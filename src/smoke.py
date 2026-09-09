@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import struct
-import shutil
-import tempfile
 import traceback
 from pathlib import Path
 
@@ -47,28 +45,25 @@ def run_smoke(data_dir: str | Path) -> int:
         progress("template")
         students = [{"seq": "1", "no": "SMOKE-1", "name": "Smoke One", "clazz": "A"}, {"seq": "2", "no": "SMOKE-2", "name": "Smoke Two", "clazz": "A"}]
         record = target_dir / "record.xlsx"
-        roster_dir = Path(tempfile.mkdtemp(prefix="rollcall-roster-"))
-        try:
-            from openpyxl import Workbook
-            roster = roster_dir / "roster.xlsx"
-            workbook = Workbook()
-            sheet = workbook.active
-            sheet.append(["序号", "学号", "姓名", "班级"])
-            for student in students:
-                sheet.append([student["seq"], student["no"], student["name"], student["clazz"]])
-            workbook.save(roster)
-            workbook.close()
-            init = InitWindow(target_path=record)
-            init.show()
-            app.processEvents()
-            if __version__ not in init.windowTitle():
-                raise AssertionError("version missing from initialization title")
-            imported = init.import_roster_path(roster)
-            if imported is None or len(imported) != len(students):
-                raise AssertionError("first-run roster import did not commit")
-            init.close()
-        finally:
-            shutil.rmtree(roster_dir, ignore_errors=True)
+        from openpyxl import Workbook
+        roster = target_dir / "smoke-roster.xlsx"
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(["序号", "学号", "姓名", "班级"])
+        for student in students:
+            sheet.append([student["seq"], student["no"], student["name"], student["clazz"]])
+        workbook.save(roster)
+        workbook.close()
+        init = InitWindow(target_path=record)
+        init.show()
+        app.processEvents()
+        if __version__ not in init.windowTitle():
+            raise AssertionError("version missing from initialization title")
+        imported = init.import_roster_path(roster)
+        if imported is None or len(imported) != len(students):
+            raise AssertionError("first-run roster import did not commit")
+        init.close()
+        roster.unlink(missing_ok=True)
         data = excel_io.load_record(record)
         progress("initial-record")
         first = MainWindow(data=data, data_path=record, acquire_lock=True)
