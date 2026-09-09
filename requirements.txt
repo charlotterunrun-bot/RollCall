@@ -1,0 +1,4 @@
+# Runtime dependencies (Python 3.12; versions validated in the v1 build environment).
+PySide6==6.11.1
+openpyxl==3.1.5
+xlrd==2.0.2

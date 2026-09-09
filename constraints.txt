@@ -1,0 +1,10 @@
+# Keep runtime, packaging, and test installs reproducible across Windows and macOS.
+PySide6==6.11.1
+PySide6_Addons==6.11.1
+PySide6_Essentials==6.11.1
+shiboken6==6.11.1
+openpyxl==3.1.5
+xlrd==2.0.2
+PyInstaller==6.22.0
+pytest==8.4.1
+pytest-qt==4.5.0

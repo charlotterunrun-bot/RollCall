@@ -5,6 +5,7 @@ __pycache__/
 
 # Virtual environment
 venv/
+.venv/
 
 # PyInstaller build output
 build/
@@ -15,4 +16,8 @@ dist/
 test/
 .tmp/
 tmp/
+**/RollCallRecord/
+**/backups/
+**/scratch/
+**/.scratch/
 *_run.py
