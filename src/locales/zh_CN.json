@@ -112,7 +112,6 @@
   "error.storage_lock_failed": "无法在数据目录建立写入锁，请检查目录权限。",
   "error.storage_conflict": "记录文件已被外部修改，请重新读取后再操作。",
   "error.storage_backup_failed": "无法为 {path} 创建 {kind} 备份。",
-  "error.storage_source_missing": "源文件 {path} 不存在。",
   "error.storage_write_failed": "无法写入 {path}。",
   "error.storage_validation_failed": "写入的文件 {path} 未通过验证。",
   "error.storage_replace_failed": "无法替换 {path}。",

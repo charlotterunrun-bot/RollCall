@@ -150,6 +150,23 @@ def test_english_geometry_keeps_window_and_config_readable(qapp):
     main.close()
 
 
+def test_init_window_geometry_and_long_hint_in_both_languages(qapp):
+    import i18n
+    from init_window import InitWindow
+
+    for language in ("zh_CN", "en_US"):
+        i18n.set_language(language)
+        window = InitWindow()
+        assert window.size().width() == 640
+        assert window.size().height() == 480
+        assert window.minimumSize().width() >= 560
+        assert window.minimumSize().height() >= 420
+        assert window.hint.wordWrap() or window.hint.sizeHint().width() <= window.width()
+        window.resize(900, 700)
+        assert window.hint.sizeHint().height() > 0
+        window.close()
+
+
 def test_config_dialog_has_language_and_translated_strategy_labels(qapp):
     import i18n
     from config_dialog import ConfigDialog

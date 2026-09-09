@@ -22,6 +22,8 @@ class InitWindow(QWidget):
     def __init__(self, *, target_path=None, session_lock=None, acquire_lock=False):
         super().__init__()
         self.setObjectName("root")
+        self.resize(640, 480)
+        self.setMinimumSize(560, 420)
         self.target_path = Path(target_path or paths.record_path())
         self._session_lock = session_lock
         if acquire_lock and session_lock is None:
@@ -53,6 +55,7 @@ class InitWindow(QWidget):
         self.hint.setTextFormat(Qt.TextFormat.PlainText)
         self.hint.setObjectName("initHint")
         self.hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.hint.setWordWrap(True)
         language_row = QHBoxLayout()
         self.language_label = QLabel()
         language_row.addStretch(1)

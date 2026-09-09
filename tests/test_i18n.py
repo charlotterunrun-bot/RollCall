@@ -92,6 +92,56 @@ def test_initialize_maps_qt_chinese_locale_and_unknown_persisted_choice(monkeypa
     assert i18n.language() == "en_US"
 
 
+def test_initialize_preserves_system_language_for_legacy_config(monkeypatch, tmp_path):
+    import i18n
+    import paths
+
+    class EnglishLocale:
+        def name(self):
+            return "en_GB"
+
+        def uiLanguages(self):
+            return ["en-GB"]
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"strategy": "random_count", "marquee": True, "marquee_duration": 500}), encoding="utf-8")
+    monkeypatch.setattr(paths, "config_path", lambda: str(config_path))
+    monkeypatch.setattr(i18n.QLocale, "system", staticmethod(lambda: EnglishLocale()))
+    assert i18n.initialize() is None
+    assert i18n.language() == "en_US"
+
+
+def test_error_context_keeps_supplied_actionable_details():
+    import i18n
+    from errors import AppError
+
+    i18n.set_language("en_US")
+    message = i18n.error_text(AppError("excel.invalid_status", value="late", path="C:/records/class.xlsx", row=12, column=8))
+    assert all(value in message for value in ("late", "C:/records/class.xlsx", "12", "8"))
+    config_message = i18n.error_text(AppError("config.invalid", field="language", path="C:/records/config.json", reason="invalid JSON"))
+    assert all(value in config_message for value in ("language", "C:/records/config.json", "invalid JSON"))
+
+
+def test_locale_json_has_no_duplicate_keys():
+    import i18n
+
+    for language in i18n.SUPPORTED_LANGUAGES:
+        duplicate_keys = []
+
+        def collect(pairs):
+            seen = set()
+            result = {}
+            for key, value in pairs:
+                if key in seen:
+                    duplicate_keys.append(key)
+                seen.add(key)
+                result[key] = value
+            return result
+
+        json.loads(Path(i18n.locale_path(language)).read_text(encoding="utf-8"), object_pairs_hook=collect)
+        assert duplicate_keys == []
+
+
 def test_message_box_standard_buttons_use_active_language(qapp, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
     import i18n

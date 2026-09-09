@@ -112,7 +112,6 @@
   "error.storage_lock_failed": "Unable to create a write lock in the data directory. Check its permissions.",
   "error.storage_conflict": "The record file was modified externally. Reload it before continuing.",
   "error.storage_backup_failed": "Could not create a {kind} backup for {path}.",
-  "error.storage_source_missing": "The source file {path} does not exist.",
   "error.storage_write_failed": "Could not write {path}.",
   "error.storage_validation_failed": "The written file {path} did not pass validation.",
   "error.storage_replace_failed": "Could not replace {path}.",

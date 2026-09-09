@@ -120,7 +120,9 @@ def initialize() -> AppError | None:
     try:
         import config
         if Path(paths.config_path()).exists():
-            set_language(config.load_language())
+            persisted = config.load_language()
+            if persisted is not None:
+                set_language(persisted)
     except AppError as exc:
         return exc
     return None
@@ -137,6 +139,33 @@ def error_text(error: BaseException) -> str:
         sheet = params.get("sheet")
         params["sheet"] = f" (worksheet: {sheet})" if sheet and language() == "en_US" else (f"（工作表：{sheet}）" if sheet else "")
     key = f"error.{error.code}"
-    if key in _load(_language) or key in _load("en_US"):
-        return tr(key, **params)
-    return tr("error.unknown", code=error.code, **params)
+    text = tr(key, **params) if key in _load(_language) or key in _load("en_US") else tr("error.unknown", code=error.code, **params)
+    return text + _error_context(error.code, params)
+
+
+def _error_context(code: str, params: dict) -> str:
+    """Append only supplied actionable location/context fields."""
+    fields = ("path", "sheet", "row", "column", "range", "reason")
+    rendered = {
+        "excel.invalid_header": {"sheet"}, "excel.sheet_not_found": {"sheet"},
+        "excel.formula_key_field": {"row", "column"}, "excel.merged_key_field": {"range"},
+        "excel.invalid_sequence": {"row", "column"}, "excel.invalid_student_id": {"row", "column"},
+        "excel.empty_student_id": {"row"}, "excel.empty_student_name": {"row"},
+        "excel.duplicate_student_id": {"row"}, "excel.student_id_precision": {"row", "column"},
+        "storage_backup_failed": {"path"}, "storage_source_missing": {"path"},
+        "storage_write_failed": {"path"}, "storage_validation_failed": {"path"},
+        "storage_replace_failed": {"path"}, "storage_read_failed": {"path"},
+        "storage_invalid_backup": {"path"}, "config.invalid": {"field"},
+    }.get(code, set())
+    labels = {
+        "path": "path" if language() == "en_US" else "路径",
+        "sheet": "worksheet" if language() == "en_US" else "工作表",
+        "row": "row" if language() == "en_US" else "行",
+        "column": "column" if language() == "en_US" else "列",
+        "range": "range" if language() == "en_US" else "范围",
+        "reason": "reason" if language() == "en_US" else "原因",
+    }
+    parts = [f"{labels[field]}={params[field]}" for field in fields if field in params and params[field] not in (None, "") and field not in rendered]
+    if not parts:
+        return ""
+    return (" [" + "; ".join(parts) + "]") if language() == "en_US" else ("（" + "；".join(parts) + "）")

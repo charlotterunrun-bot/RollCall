@@ -57,7 +57,9 @@ def _validate(data, *, path=None) -> dict:
         raise AppError(CONFIG_INVALID, path=target, field="language")
     if language not in SUPPORTED_LANGUAGES:
         language = LANGUAGE_EN
-    result.update(strategy=strategy, marquee=marquee, marquee_duration=duration, language=language)
+    result.update(strategy=strategy, marquee=marquee, marquee_duration=duration)
+    if "language" in data:
+        result["language"] = language
     return result
 
 
@@ -89,7 +91,7 @@ def load_marquee_duration() -> int:
 
 
 def load_language() -> str:
-    return load_settings()["language"]
+    return load_settings().get("language")
 
 
 def _json_validator(candidate: Path):
