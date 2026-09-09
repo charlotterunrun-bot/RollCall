@@ -13,8 +13,9 @@ def import_record(source, target, source_data, *, confirm=None):
     """Import a prevalidated source snapshot into target atomically.
 
     ``confirm`` is a UI callback used only when an existing target would be
-    replaced. Returning ``None`` means cancellation or an exact same-source
-    no-op. The returned data is the candidate parsed during the transaction,
+    replaced. Returning ``None`` means cancellation. An exact same-source
+    import returns the already validated source snapshot as a successful
+    no-copy result. The returned data is the candidate parsed during the transaction,
     rebound to the committed target and fingerprint; no post-commit reload is
     performed.
     """
@@ -22,7 +23,8 @@ def import_record(source, target, source_data, *, confirm=None):
     target = Path(target)
     try:
         if source.resolve() == target.resolve():
-            return None
+            source_data.source_path = target
+            return source_data
         expected = storage.fingerprint(target)
         if expected is not None and confirm is not None and not confirm():
             return None

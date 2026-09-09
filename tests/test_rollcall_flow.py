@@ -50,10 +50,12 @@ def test_stale_click_after_date_rollover_does_not_write(monkeypatch, qapp):
     win.close()
 
 
-def test_completed_day_disables_record_buttons(qapp):
+def test_completed_day_disables_record_buttons(qapp, monkeypatch):
+    import main_window
     from main_window import MainWindow
     from excel_io import Student, RollCallData
 
+    monkeypatch.setattr(main_window, "current_date_string", lambda: "2026-09-09")
     student = Student(2, "1", "S1", "A", {}, {"2026-09-09": "到"})
     data = RollCallData([student], {}, source_path="record.xlsx", sheet_name="record")
     win = MainWindow(data=data, acquire_lock=False)

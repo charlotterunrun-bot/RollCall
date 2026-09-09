@@ -95,3 +95,19 @@ def test_restore_uses_one_sheet_choice_for_all_validator_calls(tmp_path, monkeyp
     assert calls == [None, "record", "record"]
     assert dialog.result_data.sheet_name == "record"
     dialog.close()
+
+
+def test_same_source_import_adopts_explicit_sheet_without_writing(tmp_path, monkeypatch):
+    from excel_io import RollCallData
+    from record_actions import import_record
+    import storage
+
+    target = tmp_path / "record.xlsx"
+    target.write_bytes(b"unchanged")
+    data = RollCallData([], {}, source_path=target, sheet_name="selected")
+    before = target.read_bytes()
+    monkeypatch.setattr(storage, "atomic_write", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not write")))
+    result = import_record(target, target, data, confirm=lambda: (_ for _ in ()).throw(AssertionError("must not confirm")))
+    assert result is data
+    assert result.sheet_name == "selected"
+    assert target.read_bytes() == before
