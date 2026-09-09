@@ -149,6 +149,30 @@ def _create_backup_locked(path: Path, kind: str) -> Path:
     return destination
 
 
+def create_backup_copy(path: Path, source: Path, *, kind: str = "upgrade") -> Path:
+    """Copy an arbitrary validated source into *path*'s permanent backup set."""
+    path, source = _as_path(path), _as_path(source)
+    _check_kind(kind)
+    expected = fingerprint(source)
+    if expected is None:
+        raise AppError(STORAGE_SOURCE_MISSING, path=str(source))
+    with transaction_lock(path):
+        destination = _new_backup_path(path, kind)
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            _verify_backup_copy(destination, expected, source)
+        except AppError:
+            raise
+        except Exception as exc:
+            try:
+                destination.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not clean failed backup %s", destination, exc_info=True)
+            raise AppError(STORAGE_BACKUP_FAILED, path=str(source), kind=kind) from exc
+    return destination
+
+
 def _verify_backup_copy(backup: Path, expected: str | None, target: Path) -> None:
     """Ensure a raw backup still represents the bytes captured from target."""
     if fingerprint(backup) == expected:

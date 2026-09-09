@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QListWidget, QV
 
 import excel_io
 import i18n
+import paths
 import storage
 from errors import AppError
 
@@ -147,6 +148,9 @@ class RecoveryDialog(QDialog):
                 candidate["data"] = excel_io.load_record(candidate_path, sheet_name=sheet)
 
         try:
+            # Protect the selected legacy bytes before restore replaces the
+            # current record; this also covers restoring a different import.
+            paths.ensure_upgrade_snapshot(self.path, source_path=backup)
             committed = storage.restore_backup(self.path, backup, validate)
             data = candidate.get("data")
             if data is not None:

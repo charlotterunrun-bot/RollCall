@@ -18,6 +18,39 @@ from style import STYLESHEET
 from record_actions import import_record
 
 
+def _smoke_args(argv):
+    if "--smoke-test" not in argv:
+        return None
+    try:
+        index = argv.index("--data-dir")
+        value = argv[index + 1]
+    except (ValueError, IndexError):
+        raise SystemExit("--smoke-test requires --data-dir PATH")
+    return value
+
+
+def _prepare_data_dir(parent=None):
+    """Ensure the default is writable, with an explicit user choice fallback."""
+    try:
+        paths.ensure_data_dir()
+        return True
+    except AppError as exc:
+        if exc.code != "storage_data_dir_unwritable":
+            raise
+        i18n.critical(parent, i18n.tr("dialog.data_dir_unwritable"), error_text(exc))
+        selected = QFileDialog.getExistingDirectory(parent, i18n.tr("dialog.choose_data_dir"), "")
+        if not selected:
+            return False
+        previous = paths.data_dir()
+        paths.set_data_dir(selected)
+        try:
+            paths.ensure_data_dir()
+        except AppError:
+            paths.set_data_dir(previous)
+            raise
+        return True
+
+
 def _show_init(app, *, session_lock=None):
     window = InitWindow(session_lock=session_lock)
     holder = {"window": window}
@@ -65,9 +98,16 @@ def _import_existing_record(parent, target):
         return None
 
 
-def main():
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    smoke_dir = _smoke_args(argv)
+    if smoke_dir is not None:
+        from smoke import run_smoke
+        return run_smoke(smoke_dir)
     app = QApplication(sys.argv)
-    startup_config_error = i18n.initialize()
+    # Select the system language without reading a directory-specific config;
+    # the final candidate is loaded only after its session lock is owned.
+    i18n.set_language(i18n.system_language())
     app.setApplicationName(i18n.tr("app.title"))
     app.setStyleSheet(STYLESHEET)
     font = QFont()
@@ -75,11 +115,15 @@ def main():
     font.setPixelSize(15)
     app.setFont(font)
 
-    if startup_config_error is not None:
-        i18n.warning(None, i18n.tr("dialog.settings_read_failed"), error_text(startup_config_error))
-
     try:
+        if not _prepare_data_dir():
+            return 0
         session_lock = acquire_session_lock(paths.record_path())
+        # The selected directory is now owned by this instance. Read its
+        # persisted candidate language/settings only after lock handover.
+        selected_config_error = i18n.initialize()
+        if selected_config_error is not None:
+            i18n.warning(None, i18n.tr("dialog.settings_read_failed"), error_text(selected_config_error))
     except AppError as exc:
         i18n.critical(None, i18n.tr("dialog.startup_failed"), error_text(exc))
         return 0

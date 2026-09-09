@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import os
 import re
@@ -32,6 +33,7 @@ _DATE_DMY = re.compile(r"^\d{1,2}/\d{1,2}/\d{4}$")
 _DATE_LIKE = re.compile(r"\d{1,4}[-/]\d{1,2}[-/]\d{1,4}")
 _ZERO_FORMAT = re.compile(r"^0+$")
 _UNSET = object()
+logger = logging.getLogger(__name__)
 
 
 def _app_error(code: str, **params) -> AppError:
@@ -632,6 +634,10 @@ def write_record(no: str, date: str, value: str, *, data: RollCallData | None = 
     raw, digest = _read_stable_bytes(target)
     if data.fingerprint != digest:
         raise _app_error("storage_conflict", path=str(target))
+    # Protect the loaded pre-v2 bytes before the first v2 attendance commit.
+    # The marker is durable and keyed by the bytes, so later attendance hashes
+    # do not cause a new upgrade snapshot on every restart.
+    paths.ensure_upgrade_snapshot(target)
     candidate = {}
 
     def writer(temp):
@@ -644,6 +650,12 @@ def write_record(no: str, date: str, value: str, *, data: RollCallData | None = 
             raise _app_error("excel.write_validation_failed", no=student.id, date=normalized_date)
 
     committed = storage.atomic_write(target, writer, validator, expected_fingerprint=data.fingerprint, backup_kind="auto")
+    try:
+        paths.mark_upgrade_commit(target, digest, committed)
+    except Exception:
+        # The workbook replacement is already committed; metadata failure must
+        # not turn a successful attendance write into a false save error.
+        logger.warning("Could not advance upgrade marker for %s", target, exc_info=True)
     result = candidate["data"]
     result.source_path = target
     result.fingerprint = committed

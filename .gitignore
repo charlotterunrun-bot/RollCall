@@ -18,6 +18,10 @@ test/
 tmp/
 **/RollCallRecord/
 **/backups/
+**/.rollcall-backups/
+*.write.lock
+.rollcall-session.lock
+.rollcall-upgrade-v2.json
 **/scratch/
 **/.scratch/
 *_run.py

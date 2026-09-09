@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import excel_io
+import paths
 import storage
 from errors import AppError
 
@@ -34,6 +35,9 @@ def import_record(source, target, source_data, *, confirm=None):
     except OSError as exc:
         raise AppError("storage_read_failed", path=str(source)) from exc
 
+    # Capture imported legacy bytes before replacing the destination.  The
+    # source file itself is never modified.
+    paths.ensure_upgrade_snapshot(target, source_path=source)
     candidate = {}
 
     def writer(temp):

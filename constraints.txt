@@ -1,4 +1,5 @@
-# Keep runtime, packaging, and test installs reproducible across Windows and macOS.
+# Pin direct runtime, packaging, and test dependencies validated for v2 on each
+# native runner; transitive resolution remains runner/index dependent.
 PySide6==6.11.1
 PySide6_Addons==6.11.1
 PySide6_Essentials==6.11.1

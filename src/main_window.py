@@ -7,7 +7,8 @@ import random
 from pathlib import Path
 
 from PySide6.QtCore import QLockFile, QTimer, Qt
-from PySide6.QtGui import QAction, QFont
+from PySide6.QtGui import QAction, QDesktopServices, QFont
+from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
     QPushButton, QStackedWidget, QVBoxLayout, QWidget,
@@ -146,11 +147,14 @@ class MainWindow(QMainWindow):
         import_action = QAction(self)
         import_action.triggered.connect(self.import_existing_record)
         self.file_menu.addAction(import_action)
+        open_folder_action = QAction(self)
+        open_folder_action.triggered.connect(self.open_data_folder)
+        self.file_menu.addAction(open_folder_action)
         reload_action = QAction(self)
         reload_action.triggered.connect(self.reload_record)
         self.file_menu.addAction(reload_action)
         self._backup_action, self._restore_action = backup, restore
-        self._import_action, self._reload_action = import_action, reload_action
+        self._import_action, self._open_folder_action, self._reload_action = import_action, open_folder_action, reload_action
         self.config_menu = bar.addMenu("")
         self._rules_action = QAction(self)
         self._rules_action.triggered.connect(self.open_config)
@@ -254,6 +258,7 @@ class MainWindow(QMainWindow):
         self._backup_action.setText(i18n.tr("menu.backup"))
         self._restore_action.setText(i18n.tr("menu.restore"))
         self._import_action.setText(i18n.tr("menu.import"))
+        self._open_folder_action.setText(i18n.tr("menu.open_data_folder"))
         self._reload_action.setText(i18n.tr("menu.reload"))
         self._rules_action.setText(i18n.tr("menu.rules"))
         self._zh_action.setText(i18n.tr("menu.language.zh"))
@@ -283,7 +288,12 @@ class MainWindow(QMainWindow):
         self.retranslate_ui()
 
     def show_about(self):
-        i18n.information(self, i18n.tr("app.about"), i18n.tr("app.about_text"))
+        from version import __version__
+        i18n.information(self, i18n.tr("app.about"), f"{i18n.tr('app.about_text')}\n{__version__}")
+
+    def open_data_folder(self):
+        paths.ensure_data_dir()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(paths.data_dir())))
 
     # ------------------------------------------------------------- lifecycle
     def _check_date_timer(self):

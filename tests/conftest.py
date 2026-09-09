@@ -18,4 +18,7 @@ def isolate_application_data(tmp_path, monkeypatch):
     """Point path helpers at a fresh temporary directory for every test."""
     import paths
 
+    paths.clear_data_dir()
     monkeypatch.setattr(paths, "app_dir", lambda: str(tmp_path))
+    yield
+    paths.clear_data_dir()
