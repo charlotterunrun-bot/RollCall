@@ -1,47 +1,89 @@
-"""Main roll-call window."""
+"""Main roll-call window and its recoverable session lifecycle."""
+
+from __future__ import annotations
+
 import datetime
 import random
+from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QLockFile, QTimer, Qt
 from PySide6.QtGui import QAction, QFont
 from PySide6.QtWidgets import (
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QMainWindow,
-    QMessageBox,
-    QPushButton,
-    QStackedWidget,
-    QVBoxLayout,
-    QWidget,
+    QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
+    QPushButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 import config
 import excel_io
+import paths
+import storage
 import strategy
 from config_dialog import ConfigDialog
+from errors import AppError
+from recovery_dialog import RecoveryDialog, choose_sheet, error_text
 
 _FONT_FAMILIES = ["PingFang SC", "Microsoft YaHei", "Segoe UI"]
 _MARQUEE_TICK_MS = 30
+_DATE_CHECK_MS = 60_000
+
+
+def current_date_string() -> str:
+    return datetime.date.today().isoformat()
+
+
+def acquire_session_lock(path):
+    """Take the nonblocking whole-application lock for a data directory."""
+    path = Path(path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lock = QLockFile(str(path.parent / ".rollcall-session.lock"))
+        lock.setStaleLockTime(0)
+        if not lock.tryLock(0):
+            error = lock.error()
+            if error == QLockFile.LockError.LockFailedError:
+                raise AppError("storage_locked", path=str(path))
+            raise AppError("storage_lock_failed", path=str(path), reason=getattr(error, "name", str(error)))
+        return lock
+    except AppError:
+        raise
+    except Exception as exc:
+        raise AppError("storage_lock_failed", path=str(path)) from exc
+
+
+def _load_with_sheet_choice(path, parent=None, sheet_name=None):
+    try:
+        return excel_io.load_record(path, sheet_name=sheet_name)
+    except AppError as exc:
+        if exc.code != "excel.ambiguous_sheets":
+            raise
+        selected = choose_sheet(parent, exc.params.get("sheets", []))
+        if not selected:
+            raise
+        return excel_io.load_record(path, sheet_name=selected)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, data=None, *, data_path=None, sheet_name=None, acquire_lock=True, session_lock=None):
         super().__init__()
         self.setObjectName("root")
         self.setWindowTitle("课堂点名")
         self.resize(640, 480)
         self.setMinimumSize(640, 480)
-
-        self.data = excel_io.load_record()
-        self.strategy = config.load_strategy()
-        self.marquee_enabled = config.load_marquee()
-        self.marquee_duration = config.load_marquee_duration()
-        self.today = datetime.date.today().strftime("%Y-%m-%d")
+        self.data_path = Path(data_path or paths.record_path())
+        self._session_lock = session_lock
+        if acquire_lock and session_lock is None:
+            self._acquire_session_lock()
+        try:
+            self.data = data or _load_with_sheet_choice(self.data_path, self, sheet_name)
+        except Exception:
+            self._release_session_lock()
+            raise
+        self.strategy, self.marquee_enabled, self.marquee_duration = self._read_settings()
+        self.today = current_date_string()
         self.appeared = set()
         self.current = None
         self._finished = False
-
+        self._date_refreshing = False
         self._build_menu()
         self._build_stack()
 
@@ -52,12 +94,47 @@ class MainWindow(QMainWindow):
         self._reveal_timer.setSingleShot(True)
         self._reveal_timer.setInterval(self.marquee_duration)
         self._reveal_timer.timeout.connect(self._reveal)
+        self._date_timer = QTimer(self)
+        self._date_timer.setInterval(_DATE_CHECK_MS)
+        self._date_timer.timeout.connect(self._check_date_timer)
+        self._date_timer.start()
         self._marquee_list = []
         self._marquee_idx = 0
+
+    def _read_settings(self):
+        try:
+            settings = config.load_settings()
+        except AppError as exc:
+            QMessageBox.warning(self, "设置读取失败", error_text(exc))
+            settings = config.defaults()
+        return settings["strategy"], settings["marquee"], settings["marquee_duration"]
+
+    def _acquire_session_lock(self):
+        self._session_lock = acquire_session_lock(self.data_path)
+
+    def _release_session_lock(self):
+        if self._session_lock is not None:
+            try:
+                self._session_lock.unlock()
+            finally:
+                self._session_lock = None
 
     # ------------------------------------------------------------------ UI
     def _build_menu(self):
         bar = self.menuBar()
+        file_menu = bar.addMenu("文件")
+        backup = QAction("手动备份", self)
+        backup.triggered.connect(self.create_manual_backup)
+        file_menu.addAction(backup)
+        restore = QAction("恢复备份...", self)
+        restore.triggered.connect(self.restore_backup)
+        file_menu.addAction(restore)
+        import_action = QAction("导入已有记录...", self)
+        import_action.triggered.connect(self.import_existing_record)
+        file_menu.addAction(import_action)
+        reload_action = QAction("重新读取记录", self)
+        reload_action.triggered.connect(self.reload_record)
+        file_menu.addAction(reload_action)
         menu = bar.addMenu("配置")
         action = QAction("点名规则...", self)
         action.triggered.connect(self.open_config)
@@ -66,8 +143,6 @@ class MainWindow(QMainWindow):
     def _build_stack(self):
         self.stack = QStackedWidget(self)
         self.setCentralWidget(self.stack)
-
-        # Page 0: start
         start_page = QWidget()
         start_page.setObjectName("root")
         start_layout = QVBoxLayout(start_page)
@@ -80,26 +155,24 @@ class MainWindow(QMainWindow):
         start_layout.addWidget(self.start_btn, 0, Qt.AlignmentFlag.AlignCenter)
         start_layout.addStretch(1)
 
-        # Page 1: roll-call
         roll_page = QWidget()
         roll_page.setObjectName("root")
         outer = QVBoxLayout(roll_page)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-
         info = QWidget()
         info.setObjectName("root")
         info_layout = QVBoxLayout(info)
         info_layout.setContentsMargins(28, 16, 28, 10)
         info_layout.setSpacing(8)
-
         self.no_label = QLabel("")
         self.no_label.setObjectName("noLabel")
+        self.no_label.setTextFormat(Qt.TextFormat.PlainText)
         self.no_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.name_label = QLabel("")
         self.name_label.setObjectName("nameLabel")
+        self.name_label.setTextFormat(Qt.TextFormat.PlainText)
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
         btn_row = QHBoxLayout()
         btn_row.setSpacing(16)
         self.btn_present = QPushButton("已到")
@@ -108,29 +181,25 @@ class MainWindow(QMainWindow):
         self.btn_leave.setObjectName("btnLeave")
         self.btn_absent = QPushButton("未到")
         self.btn_absent.setObjectName("btnAbsent")
-        for b in (self.btn_present, self.btn_leave, self.btn_absent):
-            b.setCursor(Qt.CursorShape.PointingHandCursor)
+        for button in (self.btn_present, self.btn_leave, self.btn_absent):
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_present.clicked.connect(lambda: self.on_record("到"))
         self.btn_leave.clicked.connect(lambda: self.on_record("假"))
         self.btn_absent.clicked.connect(lambda: self.on_record("旷"))
-
         btn_row.addStretch(1)
         btn_row.addWidget(self.btn_present)
         btn_row.addWidget(self.btn_leave)
         btn_row.addWidget(self.btn_absent)
         btn_row.addStretch(1)
-
         info_layout.addStretch(1)
         info_layout.addWidget(self.no_label)
         info_layout.addWidget(self.name_label)
         info_layout.addSpacing(10)
         info_layout.addLayout(btn_row)
         info_layout.addStretch(1)
-
         separator = QFrame()
         separator.setObjectName("separator")
         separator.setFrameShape(QFrame.Shape.HLine)
-
         bottom = QWidget()
         bottom.setObjectName("root")
         bottom_layout = QHBoxLayout(bottom)
@@ -141,32 +210,65 @@ class MainWindow(QMainWindow):
         self.stop_btn.clicked.connect(self.on_stop)
         bottom_layout.addStretch(1)
         bottom_layout.addWidget(self.stop_btn)
-
         outer.addWidget(info, 1)
         outer.addWidget(separator)
         outer.addWidget(bottom)
-
         self.stack.addWidget(start_page)
         self.stack.addWidget(roll_page)
 
+    # ------------------------------------------------------------- lifecycle
+    def _check_date_timer(self):
+        if current_date_string() != self.today:
+            self._ensure_current_day()
+
+    def _ensure_current_day(self) -> bool:
+        new_day = current_date_string()
+        if new_day == self.today:
+            return True
+        if self._date_refreshing:
+            return False
+        self._date_refreshing = True
+        try:
+            try:
+                refreshed = _load_with_sheet_choice(self.data_path, self, self.data.sheet_name)
+            except Exception as exc:
+                QMessageBox.warning(self, "新日期读取失败", error_text(exc))
+                return False
+            was_finished = self._finished
+            self.data = refreshed
+            self.today = new_day
+            self.appeared.clear()
+            self.current = None
+            self._finished = False
+            if was_finished:
+                self.stack.setCurrentIndex(0)
+            elif self.stack.currentIndex() == 1:
+                self._begin_pick(check_date=False)
+            QMessageBox.information(self, "日期已更新", f"已切换到 {new_day}，当天记录已重新读取。")
+            return False
+        finally:
+            self._date_refreshing = False
+
     # ------------------------------------------------------------- logic
     def start_rollcall(self):
+        if not self._ensure_current_day():
+            return
         self.appeared.clear()
         self._finished = False
         self.stack.setCurrentIndex(1)
-        self._begin_pick()
+        self._begin_pick(check_date=False)
 
-    def _begin_pick(self):
-        target = strategy.next_student(
-            self.data.students, self.today, self.strategy, self.appeared
-        )
+    def _begin_pick(self, *, check_date=True):
+        if check_date and not self._ensure_current_day():
+            return
+        target = strategy.next_student(self.data.students, self.today, self.strategy, self.appeared)
         if target is None:
             self._finish()
             return
         self.current = target
         self.appeared.add(target.id)
         self._finished = False
-        self._set_record_buttons_enabled(False)  # enabled only after reveal
+        self._set_record_buttons_enabled(False)
         self._update_fonts()
         if self.marquee_enabled and len(self.data.students) > 1:
             self._start_marquee()
@@ -185,10 +287,6 @@ class MainWindow(QMainWindow):
     def _start_marquee(self):
         self._stop_marquee()
         self._reveal_timer.setInterval(self.marquee_duration)
-        # The marquee scrolls through the FULL roster (all students),
-        # independent of the selection strategy, so suspense is preserved even
-        # when only a few students remain selectable. The strategy only decides
-        # the hidden target (self.current) revealed when the timer fires.
         self._marquee_list = list(self.data.students)
         random.shuffle(self._marquee_list)
         self._marquee_idx = 0
@@ -201,12 +299,11 @@ class MainWindow(QMainWindow):
         self._reveal_timer.stop()
 
     def _marquee_tick(self):
-        if not self._marquee_list:
-            return
-        s = self._marquee_list[self._marquee_idx]
-        self.no_label.setText(s.no)
-        self.name_label.setText(s.name)
-        self._marquee_idx = (self._marquee_idx + 1) % len(self._marquee_list)
+        if self._marquee_list:
+            student = self._marquee_list[self._marquee_idx]
+            self.no_label.setText(student.no)
+            self.name_label.setText(student.name)
+            self._marquee_idx = (self._marquee_idx + 1) % len(self._marquee_list)
 
     def _reveal(self):
         self._stop_marquee()
@@ -216,89 +313,176 @@ class MainWindow(QMainWindow):
             self._set_record_buttons_enabled(True)
 
     def on_record(self, value):
-        if self.current is None or self._finished:
+        if self.current is None or self._finished or not self._ensure_current_day():
             return
-        s = self.current
+        student = self.current
         try:
-            excel_io.write_record(s.no, self.today, value)
-            s.records[self.today] = value
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "保存失败", f"写入记录失败：\n{exc}")
+            result = excel_io.write_record(student.no, self.today, value, data=self.data)
+        except AppError as exc:
+            if exc.code == "storage_conflict":
+                self._recover_from_conflict(exc)
+            else:
+                QMessageBox.critical(self, "保存失败", error_text(exc))
             return
-        self._begin_pick()
+        except Exception as exc:
+            QMessageBox.critical(self, "保存失败", error_text(exc))
+            return
+        self.data = result
+        self._begin_pick(check_date=False)
+
+    def _recover_from_conflict(self, error):
+        QMessageBox.warning(self, "记录已变化", "记录文件已被外部修改。软件将重新读取记录，请重新抽选学生。")
+        self._stop_marquee()
+        self.current = None
+        self._set_record_buttons_enabled(False)
+        try:
+            self.reload_record(show_success=False)
+        except Exception:
+            pass
 
     def on_stop(self):
-        answer = QMessageBox.question(
-            self,
-            "确认",
-            "确定要停止并退出吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
+        answer = QMessageBox.question(self, "确认", "确定要停止并退出吗？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if answer == QMessageBox.StandardButton.Yes:
             self.close()
 
     def open_config(self):
-        dialog = ConfigDialog(
-            self,
-            current=self.strategy,
-            marquee=self.marquee_enabled,
-            marquee_duration=self.marquee_duration,
-        )
-        if dialog.exec():
-            self.strategy = dialog.selected()
-            self.marquee_enabled = dialog.marquee_selected()
-            self.marquee_duration = dialog.marquee_duration_selected()
-            config.save_settings(
-                strategy=self.strategy,
-                marquee=self.marquee_enabled,
-                marquee_duration=self.marquee_duration,
-            )
+        dialog = ConfigDialog(self, current=self.strategy, marquee=self.marquee_enabled, marquee_duration=self.marquee_duration)
+        if not dialog.exec():
+            return
+        new_strategy = dialog.selected()
+        new_marquee = dialog.marquee_selected()
+        new_duration = dialog.marquee_duration_selected()
+        try:
+            config.save_settings(strategy=new_strategy, marquee=new_marquee, marquee_duration=new_duration)
+        except AppError as exc:
+            QMessageBox.critical(self, "设置保存失败", error_text(exc))
+            return
+        strategy_changed = new_strategy != self.strategy
+        self.strategy, self.marquee_enabled, self.marquee_duration = new_strategy, new_marquee, new_duration
+        self._reveal_timer.setInterval(self.marquee_duration)
+        if strategy_changed:
             self._refresh_after_strategy_change()
 
     def _refresh_after_strategy_change(self):
-        # A student is currently shown but not yet recorded. Re-pick under the
-        # new strategy so the display conforms to it, without recording anything
-        # for the student that was on screen.
         if self.stack.currentIndex() == 1 and self.current is not None:
             self.appeared.discard(self.current.id)
             self.current = None
             self._begin_pick()
 
-    def _set_record_buttons_enabled(self, enabled):
-        for b in (self.btn_present, self.btn_leave, self.btn_absent):
-            b.setEnabled(enabled)
+    # ---------------------------------------------------------- file actions
+    def create_manual_backup(self):
+        try:
+            backup = storage.create_backup(self.data_path, kind="manual")
+        except AppError as exc:
+            QMessageBox.critical(self, "备份失败", error_text(exc))
+            return None
+        QMessageBox.information(self, "备份完成", f"已创建备份：\n{backup.name}")
+        return backup
 
-    # ----------------------------------------------------------- fonts
+    def restore_backup(self):
+        dialog = RecoveryDialog(self.data_path, AppError("storage_invalid_backup", path=str(self.data_path)), self)
+        dialog.recovered.connect(self._apply_restored_data)
+        dialog.exec()
+
+    def import_existing_record(self):
+        source_name, _ = QFileDialog.getOpenFileName(self, "导入已有记录", "", "Excel 文件 (*.xlsx)")
+        if not source_name:
+            return None
+        source = Path(source_name)
+        try:
+            source_data = _load_with_sheet_choice(source, self)
+        except Exception as exc:
+            QMessageBox.critical(self, "导入失败", error_text(exc))
+            return None
+        if source.resolve() == self.data_path.resolve():
+            QMessageBox.warning(self, "导入失败", "源文件已经是当前记录文件。")
+            return None
+        expected = storage.fingerprint(self.data_path)
+        if expected is not None:
+            answer = QMessageBox.question(self, "确认替换", "导入将替换当前记录，并先保留备份。是否继续？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return None
+        candidate = {}
+        try:
+            raw = source.read_bytes()
+
+            def writer(temp):
+                temp.write_bytes(raw)
+
+            def validator(temp):
+                candidate["data"] = excel_io.load_record(temp, sheet_name=source_data.sheet_name)
+
+            committed = storage.atomic_write(self.data_path, writer, validator, expected_fingerprint=expected, backup_kind="manual")
+            imported = candidate["data"]
+            imported.source_path = self.data_path
+            imported.fingerprint = committed
+            self._apply_restored_data(imported)
+            QMessageBox.information(self, "导入完成", "已有记录已导入，请重新抽选学生。")
+            return imported
+        except AppError as exc:
+            QMessageBox.critical(self, "导入失败", error_text(exc))
+            return None
+        except OSError:
+            QMessageBox.critical(self, "导入失败", error_text(AppError("storage_read_failed", path=str(source))))
+            return None
+
+    def _apply_restored_data(self, data):
+        try:
+            self.data = data or _load_with_sheet_choice(self.data_path, self)
+        except Exception as exc:
+            QMessageBox.critical(self, "恢复后读取失败", error_text(exc))
+            return
+        self.appeared.clear()
+        self.current = None
+        self._finished = False
+        if self.stack.currentIndex() == 1:
+            self._begin_pick()
+
+    def reload_record(self, *, show_success=True):
+        try:
+            data = _load_with_sheet_choice(self.data_path, self, self.data.sheet_name)
+        except Exception as exc:
+            QMessageBox.critical(self, "重新读取失败", error_text(exc))
+            raise
+        self.data = data
+        self.appeared.clear()
+        self.current = None
+        self._finished = False
+        if self.stack.currentIndex() == 1:
+            self._begin_pick(check_date=False)
+        if show_success:
+            QMessageBox.information(self, "读取完成", "记录已重新读取，请重新抽选学生。")
+        return data
+
+    def _set_record_buttons_enabled(self, enabled):
+        for button in (self.btn_present, self.btn_leave, self.btn_absent):
+            button.setEnabled(enabled)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._update_fonts()
 
     def _update_fonts(self):
-        h = self.height()
-
-        # "今日全部点名完成！" is a status message, not a student name, so use
-        # a much smaller font that always fits the window width.
+        height = self.height()
         if self._finished:
-            done_px = max(20, min(32, int(h * 0.055)))
-            done_font = QFont()
-            done_font.setFamilies(_FONT_FAMILIES)
-            done_font.setPixelSize(done_px)
-            done_font.setWeight(QFont.Weight.DemiBold)
-            self.name_label.setFont(done_font)
+            font = QFont()
+            font.setFamilies(_FONT_FAMILIES)
+            font.setPixelSize(max(20, min(32, int(height * 0.055))))
+            font.setWeight(QFont.Weight.DemiBold)
+            self.name_label.setFont(font)
             return
-
-        name_px = max(34, min(140, int(h * 0.16)))
-        no_px = max(20, min(72, int(h * 0.085)))
-
         name_font = QFont()
         name_font.setFamilies(_FONT_FAMILIES)
-        name_font.setPixelSize(name_px)
+        name_font.setPixelSize(max(34, min(140, int(height * 0.16))))
         name_font.setWeight(QFont.Weight.DemiBold)
         self.name_label.setFont(name_font)
-
         no_font = QFont()
         no_font.setFamilies(_FONT_FAMILIES)
-        no_font.setPixelSize(no_px)
-        no_font.setWeight(QFont.Weight.Normal)
+        no_font.setPixelSize(max(20, min(72, int(height * 0.085))))
         self.no_label.setFont(no_font)
+
+    def closeEvent(self, event):
+        self._stop_marquee()
+        self._date_timer.stop()
+        self._release_session_lock()
+        super().closeEvent(event)

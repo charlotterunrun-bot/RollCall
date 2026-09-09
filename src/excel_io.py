@@ -343,13 +343,21 @@ def load_record(path=None, *, sheet_name=None) -> RollCallData:
 
 
 def is_first_run() -> bool:
-    if not os.path.isfile(paths.record_path()):
-        return True
-    try:
-        data = load_record()
-    except Exception:
-        return True
-    return len(data.students) == 0
+    """Compatibility shim; callers should use :func:`probe_record`."""
+    return probe_record(paths.record_path()) in {"missing", "empty"}
+
+
+def probe_record(path=None) -> str:
+    """Classify a record target without treating corruption as first-run.
+
+    The result is ``missing``, ``empty`` or ``ready``.  All read, permission,
+    Excel and structural errors propagate as their structured ``AppError``.
+    """
+    target = Path(path if path is not None else paths.record_path())
+    if not target.exists():
+        return "missing"
+    data = load_record(target)
+    return "empty" if not data.students else "ready"
 
 
 def _namelist_header(values, path, row):
