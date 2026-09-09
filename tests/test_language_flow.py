@@ -145,7 +145,12 @@ def test_english_geometry_keeps_window_and_config_readable(qapp):
     assert main.btn_present.sizeHint().width() < main.width() / 2
     dialog = ConfigDialog(current="random_count")
     assert dialog.minimumWidth() >= 520
-    assert dialog.sizeHint().width() >= dialog.minimumWidth()
+    dialog.show()
+    qapp.processEvents()
+    assert dialog.width() >= dialog.minimumWidth()
+    assert dialog._ok_button.isVisible()
+    assert dialog._cancel_button.isVisible()
+    assert dialog.combo_language.isVisible()
     dialog.close()
     main.close()
 

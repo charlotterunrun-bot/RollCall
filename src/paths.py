@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -79,14 +78,8 @@ def resource_path(name: str) -> str:
 
 
 def fingerprint(path: str | os.PathLike[str]) -> str | None:
-    target = Path(path)
-    if not target.is_file():
-        return None
-    digest = hashlib.sha256()
-    with target.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    from storage import fingerprint as storage_fingerprint
+    return storage_fingerprint(Path(path))
 
 
 def upgrade_marker_path(record_path: str | os.PathLike[str] | None = None) -> Path:
@@ -121,23 +114,22 @@ def ensure_upgrade_snapshot(record_path: str | os.PathLike[str], *, source_path:
         active_snapshot = payload.get("active_snapshot")
         if payload.get("active_fingerprint") == digest and active_snapshot:
             snapshot = marker.parent / ".rollcall-backups" / active_snapshot
-            if snapshot.is_file():
+            expected_snapshot = payload.get("snapshot_fingerprint", digest)
+            if snapshot.is_file() and fingerprint(snapshot) == expected_snapshot:
                 return snapshot
         if existing:
             snapshot = marker.parent / ".rollcall-backups" / existing
             if snapshot.is_file() and fingerprint(snapshot) == digest:
                 if payload.get("active_fingerprint") != digest:
-                    payload = {"version": 2, "active_fingerprint": digest, "active_snapshot": snapshot.name, "records": records}
+                    payload = {"version": 2, "active_fingerprint": digest, "active_snapshot": snapshot.name, "snapshot_fingerprint": digest, "records": records}
                     _write_marker(marker, payload)
                 return snapshot
-        if payload.get("active_fingerprint") == digest and existing:
-            return marker.parent / ".rollcall-backups" / existing
         from storage import create_backup_copy
         snapshot = create_backup_copy(target, source, kind="upgrade")
         if fingerprint(snapshot) != digest:
             raise OSError("upgrade snapshot changed while copying")
         records[digest] = snapshot.name
-        _write_marker(marker, {"version": 2, "active_fingerprint": digest, "active_snapshot": snapshot.name, "records": records})
+        _write_marker(marker, {"version": 2, "active_fingerprint": digest, "active_snapshot": snapshot.name, "snapshot_fingerprint": digest, "records": records})
         return snapshot
     except Exception as exc:
         if temp is not None:

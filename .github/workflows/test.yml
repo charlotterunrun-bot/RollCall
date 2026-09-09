@@ -27,14 +27,22 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --requirement requirements-dev.txt --constraint constraints.txt
+      - run: $version = python -c "import sys; sys.path.insert(0, 'src'); from version import __version__; print(__version__)"; "ROLLCALL_VERSION=$version" >> $env:GITHUB_ENV
+        shell: pwsh
       - run: python -c "import platform,sys; assert sys.platform == 'win32'; assert platform.machine().lower() in ('amd64','x86_64'); print(sys.version); print(platform.machine())"
+      - run: python scripts/write_dependency_receipt.py .tmp/windows-dependency-receipt.json
       - run: ./scripts/build_windows.ps1
         shell: pwsh
-      - run: python scripts/run_packaged_smoke.py dist/RollCall.exe
+      - run: python scripts/run_packaged_smoke.py dist/RollCall.exe --output-dir .tmp/windows-smoke
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: RollCall-2.0.0-Windows-x64
-          path: dist/RollCall-2.0.0-Windows-x64.exe
+          name: RollCall-Windows-evidence-${{ env.ROLLCALL_VERSION }}
+          path: .tmp/windows-*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: RollCall-Windows-x64-${{ env.ROLLCALL_VERSION }}
+          path: dist/RollCall-*-Windows-x64.exe
           if-no-files-found: error
 
   macos-package:
@@ -46,12 +54,16 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --requirement requirements-dev.txt --constraint constraints.txt
+      - run: |
+          version=$(python -c 'import sys; sys.path.insert(0, "src"); from version import __version__; print(__version__)')
+          echo "ROLLCALL_VERSION=$version" >> "$GITHUB_ENV"
       - run: python -m pytest -q
+      - run: python scripts/write_dependency_receipt.py .tmp/macos-dependency-receipt.json
       - run: |
           test "$(uname -m)" = arm64
           python -c "import platform,sys; assert sys.platform == 'darwin'; assert platform.machine() == 'arm64'; print(sys.version); print(platform.machine())"
       - run: bash scripts/build_macos.sh
-      - run: python scripts/run_packaged_smoke.py dist/RollCall.app/Contents/MacOS/RollCall
+      - run: python scripts/run_packaged_smoke.py dist/RollCall.app/Contents/MacOS/RollCall --output-dir .tmp/macos-smoke
       - run: codesign --verify --deep --strict dist/RollCall.app
       - run: |
           while IFS= read -r -d '' binary; do
@@ -62,6 +74,11 @@ jobs:
           done < <(find dist/RollCall.app -type f \( -perm -111 -o -name '*.dylib' -o -name '*.so' \) -print0)
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: RollCall-2.0.0-macOS-arm64
-          path: dist/RollCall-2.0.0-macOS-arm64.zip
+          name: RollCall-macOS-arm64-${{ env.ROLLCALL_VERSION }}
+          path: dist/RollCall-*-macOS-arm64.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: RollCall-macOS-evidence-${{ env.ROLLCALL_VERSION }}
+          path: .tmp/macos-*
           if-no-files-found: error

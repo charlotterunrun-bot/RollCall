@@ -14,6 +14,7 @@ import storage
 from errors import AppError
 from recovery_dialog import choose_sheet, error_text
 from main_window import acquire_session_lock
+from version import window_title
 
 
 class InitWindow(QWidget):
@@ -84,7 +85,7 @@ class InitWindow(QWidget):
         self.retranslate_ui()
 
     def retranslate_ui(self):
-        self.setWindowTitle(f"{i18n.tr('app.title')} · {i18n.tr('init.title')}")
+        self.setWindowTitle(f"{window_title(i18n.tr('app.title'))} · {i18n.tr('init.title')}")
         self.title.setText(i18n.tr("init.title"))
         self.hint.setText(i18n.tr("init.hint"))
         self.language_label.setText(i18n.tr("menu.language"))
@@ -137,20 +138,26 @@ class InitWindow(QWidget):
         if not path:
             return
         try:
-            students = self._read_students(path)
+            students = self.import_roster_path(path)
             if students is None:
                 return
-            if not students:
-                i18n.warning(self, i18n.tr("dialog.error"), i18n.tr("dialog.roster_empty"))
-                return
-            expected = storage.fingerprint(self.target_path)
-            if expected is not None:
-                answer = i18n.question(self, i18n.tr("dialog.confirm"), i18n.tr("dialog.confirm_replace"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
-                if answer != QMessageBox.StandardButton.Yes:
-                    return
-            excel_io.create_record_from_namelist(students, language=i18n.language(), path=self.target_path, expected_fingerprint=expected)
         except AppError as exc:
             i18n.critical(self, i18n.tr("dialog.import_failed"), error_text(exc))
             return
         i18n.information(self, i18n.tr("dialog.complete"), i18n.tr("status.imported_students", count=len(students)))
         self.initialized.emit()
+
+    def import_roster_path(self, path):
+        """Validate and import a selected roster through the first-run path."""
+        students = self._read_students(path)
+        if students is None:
+            return None
+        if not students:
+            raise AppError("excel.empty_namelist", path=str(path))
+        expected = storage.fingerprint(self.target_path)
+        if expected is not None:
+            answer = i18n.question(self, i18n.tr("dialog.confirm"), i18n.tr("dialog.confirm_replace"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return None
+        excel_io.create_record_from_namelist(students, language=i18n.language(), path=self.target_path, expected_fingerprint=expected)
+        return students

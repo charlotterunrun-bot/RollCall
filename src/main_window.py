@@ -20,6 +20,7 @@ import i18n
 import paths
 import storage
 import strategy
+from version import window_title
 from config_dialog import ConfigDialog
 from errors import AppError
 from recovery_dialog import RecoveryDialog, choose_sheet, error_text
@@ -69,7 +70,7 @@ class MainWindow(QMainWindow):
     def __init__(self, data=None, *, data_path=None, sheet_name=None, acquire_lock=True, session_lock=None):
         super().__init__()
         self.setObjectName("root")
-        self.setWindowTitle(i18n.tr("app.title"))
+        self.setWindowTitle(window_title(i18n.tr("app.title")))
         self.resize(640, 480)
         self.setMinimumSize(640, 480)
         self.data_path = Path(data_path or paths.record_path())
@@ -251,7 +252,7 @@ class MainWindow(QMainWindow):
 
     def retranslate_ui(self):
         """Refresh only presentation text; selection and timer state stay intact."""
-        self.setWindowTitle(i18n.tr("app.title"))
+        self.setWindowTitle(window_title(i18n.tr("app.title")))
         self.file_menu.setTitle(i18n.tr("menu.file"))
         self.config_menu.setTitle(i18n.tr("menu.config"))
         self.language_menu.setTitle(i18n.tr("menu.language"))

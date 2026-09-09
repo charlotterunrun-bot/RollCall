@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import struct
+import shutil
+import tempfile
 import traceback
 from pathlib import Path
 
@@ -20,11 +23,12 @@ def run_smoke(data_dir: str | Path) -> int:
         report.write_text(json.dumps({"mode": "packaged-offscreen", "stage": stage}, indent=2), encoding="utf-8")
     try:
         progress("imports")
-        from PySide6.QtCore import QTimer
+        from PySide6.QtCore import QSysInfo, QTimer
         from PySide6.QtWidgets import QApplication
 
         import excel_io
         import i18n
+        from init_window import InitWindow
         from main_window import MainWindow
         from openpyxl import load_workbook
         from version import __version__
@@ -41,12 +45,31 @@ def run_smoke(data_dir: str | Path) -> int:
             finally:
                 workbook.close()
         progress("template")
-        students = [
-            {"seq": "1", "no": "SMOKE-1", "name": "Smoke One", "clazz": "A"},
-            {"seq": "2", "no": "SMOKE-2", "name": "Smoke Two", "clazz": "A"},
-        ]
+        students = [{"seq": "1", "no": "SMOKE-1", "name": "Smoke One", "clazz": "A"}, {"seq": "2", "no": "SMOKE-2", "name": "Smoke Two", "clazz": "A"}]
         record = target_dir / "record.xlsx"
-        data = excel_io.create_record_from_namelist(students, language="zh_CN", path=record)
+        roster_dir = Path(tempfile.mkdtemp(prefix="rollcall-roster-"))
+        try:
+            from openpyxl import Workbook
+            roster = roster_dir / "roster.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.append(["序号", "学号", "姓名", "班级"])
+            for student in students:
+                sheet.append([student["seq"], student["no"], student["name"], student["clazz"]])
+            workbook.save(roster)
+            workbook.close()
+            init = InitWindow(target_path=record)
+            init.show()
+            app.processEvents()
+            if __version__ not in init.windowTitle():
+                raise AssertionError("version missing from initialization title")
+            imported = init.import_roster_path(roster)
+            if imported is None or len(imported) != len(students):
+                raise AssertionError("first-run roster import did not commit")
+            init.close()
+        finally:
+            shutil.rmtree(roster_dir, ignore_errors=True)
+        data = excel_io.load_record(record)
         progress("initial-record")
         first = MainWindow(data=data, data_path=record, acquire_lock=True)
         first.marquee_enabled = True
@@ -84,15 +107,20 @@ def run_smoke(data_dir: str | Path) -> int:
         # Let Qt deliver one real event-loop turn while the windows are closed.
         QTimer.singleShot(0, app.quit)
         app.exec()
+        reloaded = excel_io.load_record(record)
+        actual_records = {student.id: dict(student.records) for student in reloaded.students}
         payload = {
             "mode": "packaged-offscreen",
             "platform": __import__("sys").platform,
-            "arch": __import__("platform").machine(),
+            "arch": QSysInfo.currentCpuArchitecture(),
+            "pointer_bits": struct.calcsize("P") * 8,
             "frozen": bool(getattr(__import__("sys"), "frozen", False)),
             "version": __version__,
             "record_reloaded": excel_io.probe_record(record) == "ready",
             "languages": ["zh_CN", "en_US"],
-            "attendance_count": sum(len(student.records) for student in excel_io.load_record(record).students),
+            "attendance_count": sum(len(records) for records in actual_records.values()),
+            "students": sorted(actual_records),
+            "statuses": sorted(status for records in actual_records.values() for status in records.values()),
         }
         report.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return 0
