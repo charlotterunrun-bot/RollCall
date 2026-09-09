@@ -16,6 +16,9 @@ STRATEGY_SEQ_COUNT = "seq_count"
 DEFAULT_STRATEGY = STRATEGY_RANDOM_COUNT
 DEFAULT_MARQUEE = True
 DEFAULT_MARQUEE_DURATION = 500
+LANGUAGE_ZH = "zh_CN"
+LANGUAGE_EN = "en_US"
+SUPPORTED_LANGUAGES = (LANGUAGE_ZH, LANGUAGE_EN)
 MARQUEE_DURATION_MIN = 100
 MARQUEE_DURATION_MAX = 10000
 STRATEGY_LABELS = {
@@ -32,7 +35,7 @@ CONFIG_WRITE_FAILED = "config.write_failed"
 
 
 def defaults() -> dict:
-    return {"strategy": DEFAULT_STRATEGY, "marquee": DEFAULT_MARQUEE, "marquee_duration": DEFAULT_MARQUEE_DURATION}
+    return {"strategy": DEFAULT_STRATEGY, "marquee": DEFAULT_MARQUEE, "marquee_duration": DEFAULT_MARQUEE_DURATION, "language": LANGUAGE_ZH}
 
 
 def _validate(data, *, path=None) -> dict:
@@ -43,13 +46,18 @@ def _validate(data, *, path=None) -> dict:
     strategy = result.get("strategy", DEFAULT_STRATEGY)
     marquee = result.get("marquee", DEFAULT_MARQUEE)
     duration = result.get("marquee_duration", DEFAULT_MARQUEE_DURATION)
+    language = result.get("language", LANGUAGE_ZH)
     if not isinstance(strategy, str) or strategy not in STRATEGY_LABELS:
         raise AppError(CONFIG_INVALID, path=target, field="strategy")
     if not isinstance(marquee, bool):
         raise AppError(CONFIG_INVALID, path=target, field="marquee")
     if isinstance(duration, bool) or not isinstance(duration, int) or not (MARQUEE_DURATION_MIN <= duration <= MARQUEE_DURATION_MAX):
         raise AppError(CONFIG_INVALID, path=target, field="marquee_duration")
-    result.update(strategy=strategy, marquee=marquee, marquee_duration=duration)
+    if not isinstance(language, str):
+        raise AppError(CONFIG_INVALID, path=target, field="language")
+    if language not in SUPPORTED_LANGUAGES:
+        language = LANGUAGE_EN
+    result.update(strategy=strategy, marquee=marquee, marquee_duration=duration, language=language)
     return result
 
 
@@ -80,6 +88,10 @@ def load_marquee_duration() -> int:
     return load_settings()["marquee_duration"]
 
 
+def load_language() -> str:
+    return load_settings()["language"]
+
+
 def _json_validator(candidate: Path):
     def validate(path: Path):
         try:
@@ -92,7 +104,7 @@ def _json_validator(candidate: Path):
     return validate
 
 
-def save_settings(strategy=None, marquee=None, marquee_duration=None) -> dict:
+def save_settings(strategy=None, marquee=None, marquee_duration=None, language=None) -> dict:
     target = Path(paths.config_path())
     if target.exists():
         try:
@@ -112,6 +124,8 @@ def save_settings(strategy=None, marquee=None, marquee_duration=None) -> dict:
         candidate["marquee"] = marquee
     if marquee_duration is not None:
         candidate["marquee_duration"] = marquee_duration
+    if language is not None:
+        candidate["language"] = language
     candidate = _validate(candidate, path=target)
     raw = json.dumps(candidate, ensure_ascii=False, indent=2).encode("utf-8")
 

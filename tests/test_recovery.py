@@ -73,8 +73,8 @@ def test_restore_uses_one_sheet_choice_for_all_validator_calls(tmp_path, monkeyp
     backup = tmp_path / "record.xlsx.20260909T000000000000Z.0123456789abcdef0123456789abcdef.manual.bak"
     backup.write_bytes(b"synthetic")
     monkeypatch.setattr(storage, "list_backups", lambda path: [backup])
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
-    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+    monkeypatch.setattr(recovery_dialog.i18n, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(recovery_dialog.i18n, "critical", lambda *a, **k: None)
     choices = []
     monkeypatch.setattr(recovery_dialog, "choose_sheet", lambda *a, **k: choices.append("record") or "record")
     calls = []

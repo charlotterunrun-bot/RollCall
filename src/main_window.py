@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 import config
 import excel_io
+import i18n
 import paths
 import storage
 import strategy
@@ -67,7 +68,7 @@ class MainWindow(QMainWindow):
     def __init__(self, data=None, *, data_path=None, sheet_name=None, acquire_lock=True, session_lock=None):
         super().__init__()
         self.setObjectName("root")
-        self.setWindowTitle("课堂点名")
+        self.setWindowTitle(i18n.tr("app.title"))
         self.resize(640, 480)
         self.setMinimumSize(640, 480)
         self.data_path = Path(data_path or paths.record_path())
@@ -113,7 +114,7 @@ class MainWindow(QMainWindow):
         try:
             settings = config.load_settings()
         except AppError as exc:
-            QMessageBox.warning(self, "设置读取失败", error_text(exc))
+            i18n.warning(self, i18n.tr("dialog.settings_read_failed"), error_text(exc))
             settings = config.defaults()
         return settings["strategy"], settings["marquee"], settings["marquee_duration"]
 
@@ -135,23 +136,37 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ UI
     def _build_menu(self):
         bar = self.menuBar()
-        file_menu = bar.addMenu("文件")
-        backup = QAction("手动备份", self)
+        self.file_menu = bar.addMenu("")
+        backup = QAction(self)
         backup.triggered.connect(self.create_manual_backup)
-        file_menu.addAction(backup)
-        restore = QAction("恢复备份...", self)
+        self.file_menu.addAction(backup)
+        restore = QAction(self)
         restore.triggered.connect(self.restore_backup)
-        file_menu.addAction(restore)
-        import_action = QAction("导入已有记录...", self)
+        self.file_menu.addAction(restore)
+        import_action = QAction(self)
         import_action.triggered.connect(self.import_existing_record)
-        file_menu.addAction(import_action)
-        reload_action = QAction("重新读取记录", self)
+        self.file_menu.addAction(import_action)
+        reload_action = QAction(self)
         reload_action.triggered.connect(self.reload_record)
-        file_menu.addAction(reload_action)
-        menu = bar.addMenu("配置")
-        action = QAction("点名规则...", self)
-        action.triggered.connect(self.open_config)
-        menu.addAction(action)
+        self.file_menu.addAction(reload_action)
+        self._backup_action, self._restore_action = backup, restore
+        self._import_action, self._reload_action = import_action, reload_action
+        self.config_menu = bar.addMenu("")
+        self._rules_action = QAction(self)
+        self._rules_action.triggered.connect(self.open_config)
+        self.config_menu.addAction(self._rules_action)
+        self.language_menu = self.config_menu.addMenu("")
+        self._zh_action = QAction(self)
+        self._zh_action.setCheckable(True)
+        self._en_action = QAction(self)
+        self._en_action.setCheckable(True)
+        self._zh_action.triggered.connect(lambda: self._change_language("zh_CN"))
+        self._en_action.triggered.connect(lambda: self._change_language("en_US"))
+        self.language_menu.addAction(self._zh_action)
+        self.language_menu.addAction(self._en_action)
+        self._about_action = QAction(self)
+        self._about_action.triggered.connect(self.show_about)
+        self.config_menu.addAction(self._about_action)
 
     def _build_stack(self):
         self.stack = QStackedWidget(self)
@@ -160,7 +175,7 @@ class MainWindow(QMainWindow):
         start_page.setObjectName("root")
         start_layout = QVBoxLayout(start_page)
         start_layout.setContentsMargins(24, 24, 24, 24)
-        self.start_btn = QPushButton("现在开始点名啦！")
+        self.start_btn = QPushButton()
         self.start_btn.setObjectName("startButton")
         self.start_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.start_btn.clicked.connect(self.start_rollcall)
@@ -188,11 +203,11 @@ class MainWindow(QMainWindow):
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         btn_row = QHBoxLayout()
         btn_row.setSpacing(16)
-        self.btn_present = QPushButton("已到")
+        self.btn_present = QPushButton()
         self.btn_present.setObjectName("btnPresent")
-        self.btn_leave = QPushButton("请假")
+        self.btn_leave = QPushButton()
         self.btn_leave.setObjectName("btnLeave")
-        self.btn_absent = QPushButton("未到")
+        self.btn_absent = QPushButton()
         self.btn_absent.setObjectName("btnAbsent")
         for button in (self.btn_present, self.btn_leave, self.btn_absent):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -217,7 +232,7 @@ class MainWindow(QMainWindow):
         bottom.setObjectName("root")
         bottom_layout = QHBoxLayout(bottom)
         bottom_layout.setContentsMargins(24, 10, 24, 16)
-        self.stop_btn = QPushButton("停止并退出")
+        self.stop_btn = QPushButton()
         self.stop_btn.setObjectName("stopButton")
         self.stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.stop_btn.clicked.connect(self.on_stop)
@@ -228,6 +243,47 @@ class MainWindow(QMainWindow):
         outer.addWidget(bottom)
         self.stack.addWidget(start_page)
         self.stack.addWidget(roll_page)
+        self.retranslate_ui()
+
+    def retranslate_ui(self):
+        """Refresh only presentation text; selection and timer state stay intact."""
+        self.setWindowTitle(i18n.tr("app.title"))
+        self.file_menu.setTitle(i18n.tr("menu.file"))
+        self.config_menu.setTitle(i18n.tr("menu.config"))
+        self.language_menu.setTitle(i18n.tr("menu.language"))
+        self._backup_action.setText(i18n.tr("menu.backup"))
+        self._restore_action.setText(i18n.tr("menu.restore"))
+        self._import_action.setText(i18n.tr("menu.import"))
+        self._reload_action.setText(i18n.tr("menu.reload"))
+        self._rules_action.setText(i18n.tr("menu.rules"))
+        self._zh_action.setText(i18n.tr("menu.language.zh"))
+        self._en_action.setText(i18n.tr("menu.language.en"))
+        self._zh_action.setChecked(i18n.language() == "zh_CN")
+        self._en_action.setChecked(i18n.language() == "en_US")
+        self._about_action.setText(i18n.tr("menu.about"))
+        self.start_btn.setText(i18n.tr("button.start"))
+        self.btn_present.setText(i18n.tr("button.present"))
+        self.btn_leave.setText(i18n.tr("button.leave"))
+        self.btn_absent.setText(i18n.tr("button.absent"))
+        self.stop_btn.setText(i18n.tr("button.stop"))
+        if self._finished:
+            self.name_label.setText(i18n.tr("status.completed"))
+        self._update_fonts()
+
+    def _change_language(self, language):
+        if language == i18n.language():
+            return
+        try:
+            config.save_settings(language=language)
+        except AppError as exc:
+            i18n.critical(self, i18n.tr("dialog.settings_save_failed"), error_text(exc))
+            self.retranslate_ui()
+            return
+        i18n.set_language(language)
+        self.retranslate_ui()
+
+    def show_about(self):
+        i18n.information(self, i18n.tr("app.about"), i18n.tr("app.about_text"))
 
     # ------------------------------------------------------------- lifecycle
     def _check_date_timer(self):
@@ -248,7 +304,7 @@ class MainWindow(QMainWindow):
                 refreshed = _load_with_sheet_choice(self.data_path, self, self.data.sheet_name)
             except Exception as exc:
                 self._pending_date_error = new_day
-                QMessageBox.warning(self, "新日期读取失败", error_text(exc))
+                i18n.warning(self, i18n.tr("dialog.date_read_failed"), error_text(exc))
                 return False
             was_finished = self._finished
             self.data = refreshed
@@ -261,7 +317,7 @@ class MainWindow(QMainWindow):
                 self.stack.setCurrentIndex(0)
             elif self.stack.currentIndex() == 1:
                 self._begin_pick(check_date=False)
-            QMessageBox.information(self, "日期已更新", f"已切换到 {new_day}，当天记录已重新读取。")
+            i18n.information(self, i18n.tr("dialog.date_updated"), i18n.tr("status.date_updated", date=new_day))
             return False
         finally:
             self._date_refreshing = False
@@ -297,7 +353,7 @@ class MainWindow(QMainWindow):
         self.current = None
         self._finished = True
         self.no_label.setText("")
-        self.name_label.setText("今日全部点名完成！")
+        self.name_label.setText(i18n.tr("status.completed"))
         self._set_record_buttons_enabled(False)
         self._update_fonts()
 
@@ -339,16 +395,16 @@ class MainWindow(QMainWindow):
             if exc.code == "storage_conflict":
                 self._recover_from_conflict(exc)
             else:
-                QMessageBox.critical(self, "保存失败", error_text(exc))
+                i18n.critical(self, i18n.tr("dialog.save_failed"), error_text(exc))
             return
         except Exception as exc:
-            QMessageBox.critical(self, "保存失败", error_text(exc))
+            i18n.critical(self, i18n.tr("dialog.save_failed"), error_text(exc))
             return
         self.data = result
         self._begin_pick(check_date=False)
 
     def _recover_from_conflict(self, error):
-        QMessageBox.warning(self, "记录已变化", "记录文件已被外部修改。软件将重新读取记录，请重新抽选学生。")
+        i18n.warning(self, i18n.tr("dialog.read_failed"), i18n.tr("status.external_change"))
         self._stop_marquee()
         self.current = None
         self._set_record_buttons_enabled(False)
@@ -358,7 +414,7 @@ class MainWindow(QMainWindow):
             pass
 
     def on_stop(self):
-        answer = QMessageBox.question(self, "确认", "确定要停止并退出吗？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        answer = i18n.question(self, i18n.tr("dialog.confirm"), i18n.tr("dialog.confirm_stop"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if answer == QMessageBox.StandardButton.Yes:
             self.close()
 
@@ -369,13 +425,17 @@ class MainWindow(QMainWindow):
         new_strategy = dialog.selected()
         new_marquee = dialog.marquee_selected()
         new_duration = dialog.marquee_duration_selected()
+        new_language = dialog.language_selected()
         try:
-            config.save_settings(strategy=new_strategy, marquee=new_marquee, marquee_duration=new_duration)
+            config.save_settings(strategy=new_strategy, marquee=new_marquee, marquee_duration=new_duration, language=new_language)
         except AppError as exc:
-            QMessageBox.critical(self, "设置保存失败", error_text(exc))
+            i18n.critical(self, i18n.tr("dialog.settings_save_failed"), error_text(exc))
             return
         strategy_changed = new_strategy != self.strategy
         self.strategy, self.marquee_enabled, self.marquee_duration = new_strategy, new_marquee, new_duration
+        if new_language != i18n.language():
+            i18n.set_language(new_language)
+            self.retranslate_ui()
         self._reveal_timer.setInterval(self.marquee_duration)
         if strategy_changed:
             self._refresh_after_strategy_change()
@@ -391,9 +451,9 @@ class MainWindow(QMainWindow):
         try:
             backup = storage.create_backup(self.data_path, kind="manual")
         except AppError as exc:
-            QMessageBox.critical(self, "备份失败", error_text(exc))
+            i18n.critical(self, i18n.tr("dialog.backup_failed"), error_text(exc))
             return None
-        QMessageBox.information(self, "备份完成", f"已创建备份：\n{backup.name}")
+        i18n.information(self, i18n.tr("dialog.backup_complete"), i18n.tr("status.backup_created", name=backup.name))
         return backup
 
     def restore_backup(self):
@@ -402,20 +462,20 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def import_existing_record(self):
-        source_name, _ = QFileDialog.getOpenFileName(self, "导入已有记录", "", "Excel 文件 (*.xlsx)")
+        source_name, _ = QFileDialog.getOpenFileName(self, i18n.tr("menu.import"), "", i18n.tr("record.filter"))
         if not source_name:
             return None
         source = Path(source_name)
         try:
             source_data = _load_with_sheet_choice(source, self)
         except Exception as exc:
-            QMessageBox.critical(self, "导入失败", error_text(exc))
+            i18n.critical(self, i18n.tr("dialog.import_failed"), error_text(exc))
             return None
         try:
             imported = import_record(
                 source, self.data_path, source_data,
-                confirm=lambda: QMessageBox.question(
-                    self, "确认替换", "导入将替换当前记录，并先保留备份。是否继续？",
+                confirm=lambda: i18n.question(
+                    self, i18n.tr("dialog.confirm"), i18n.tr("dialog.confirm_replace"),
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No,
                 ) == QMessageBox.StandardButton.Yes,
@@ -423,17 +483,17 @@ class MainWindow(QMainWindow):
             if imported is None:
                 return None
             self._apply_restored_data(imported)
-            QMessageBox.information(self, "导入完成", "已有记录已导入，请重新抽选学生。")
+            i18n.information(self, i18n.tr("dialog.import_complete"), i18n.tr("status.imported"))
             return imported
         except AppError as exc:
-            QMessageBox.critical(self, "导入失败", error_text(exc))
+            i18n.critical(self, i18n.tr("dialog.import_failed"), error_text(exc))
             return None
 
     def _apply_restored_data(self, data):
         try:
             self.data = data or _load_with_sheet_choice(self.data_path, self)
         except Exception as exc:
-            QMessageBox.critical(self, "恢复后读取失败", error_text(exc))
+            i18n.critical(self, i18n.tr("dialog.restore_read_failed"), error_text(exc))
             return
         self.appeared.clear()
         self.current = None
@@ -445,7 +505,7 @@ class MainWindow(QMainWindow):
         try:
             data = _load_with_sheet_choice(self.data_path, self, self.data.sheet_name)
         except Exception as exc:
-            QMessageBox.critical(self, "重新读取失败", error_text(exc))
+            i18n.critical(self, i18n.tr("dialog.reload_failed"), error_text(exc))
             raise
         self.data = data
         self._pending_date_error = None
@@ -455,7 +515,7 @@ class MainWindow(QMainWindow):
         if self.stack.currentIndex() == 1:
             self._begin_pick(check_date=False)
         if show_success:
-            QMessageBox.information(self, "读取完成", "记录已重新读取，请重新抽选学生。")
+            i18n.information(self, i18n.tr("dialog.reload_complete"), i18n.tr("status.reloaded"))
         return data
 
     def _set_record_buttons_enabled(self, enabled):

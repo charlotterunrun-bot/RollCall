@@ -5,39 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (
-    QDialog,
-    QDialogButtonBox,
-    QLabel,
-    QListWidget,
-    QPushButton,
-    QVBoxLayout,
-    QMessageBox,
-    QInputDialog,
-)
+from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QListWidget, QVBoxLayout, QMessageBox
 
 import excel_io
+import i18n
 import storage
 from errors import AppError
 
 
-ERROR_TEXT = {
-    "storage_source_missing": "记录文件不存在，可以导入花名册。",
-    "excel.invalid_file": "记录文件不是可读取的 Excel 文件。请重试、恢复备份或导入其他记录。",
-    "excel.invalid_header": "记录文件缺少必需表头。请修复文件或恢复备份。",
-    "excel.ambiguous_sheets": "记录文件有多个可用工作表，请明确选择工作表。",
-    "storage_locked": "记录文件正在被另一个课堂点名实例使用。",
-    "storage_lock_failed": "无法在数据目录建立写入锁，请检查目录权限。",
-    "storage_conflict": "记录文件已被外部修改，请重新读取后再操作。",
-    "config.invalid": "设置文件损坏。可以继续使用默认设置，并在设置中保存修复后的设置。",
-    "config.read_failed": "设置文件无法读取，请检查权限。",
-}
-
-
 def error_text(error: BaseException) -> str:
-    if isinstance(error, AppError):
-        return ERROR_TEXT.get(error.code, f"操作失败（{error.code}）。请重试或选择恢复方式。")
-    return f"操作失败：{error}"
+    return i18n.error_text(error)
 
 
 class SheetChooser(QDialog):
@@ -45,18 +22,25 @@ class SheetChooser(QDialog):
 
     def __init__(self, sheets, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("选择工作表")
+        self._sheets = [str(s) for s in sheets]
         layout = QVBoxLayout(self)
-        label = QLabel("请选择要使用的工作表：")
-        layout.addWidget(label)
+        self.label = QLabel()
+        layout.addWidget(self.label)
         self.list = QListWidget()
-        self.list.addItems([str(s) for s in sheets])
+        self.list.addItems(self._sheets)
         self.list.setCurrentRow(0)
         layout.addWidget(self.list)
-        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        box.accepted.connect(self.accept)
-        box.rejected.connect(self.reject)
-        layout.addWidget(box)
+        self.box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.box.accepted.connect(self.accept)
+        self.box.rejected.connect(self.reject)
+        layout.addWidget(self.box)
+        self.retranslate_ui()
+
+    def retranslate_ui(self):
+        self.setWindowTitle(i18n.tr("dialog.choose_sheet"))
+        self.label.setText(i18n.tr("dialog.choose_sheet_hint"))
+        self.box.button(QDialogButtonBox.StandardButton.Ok).setText(i18n.tr("button.ok"))
+        self.box.button(QDialogButtonBox.StandardButton.Cancel).setText(i18n.tr("button.cancel"))
 
     @property
     def selected(self):
@@ -79,16 +63,15 @@ class RecoveryDialog(QDialog):
         super().__init__(parent)
         self.path = Path(path)
         self.error = error
-        self.setWindowTitle("记录恢复")
         self.setModal(True)
         layout = QVBoxLayout(self)
-        title = QLabel("无法打开课堂记录")
-        title.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(title)
-        detail = QLabel(f"文件：{self.path}\n{error_text(error)}")
-        detail.setTextFormat(Qt.TextFormat.PlainText)
-        detail.setWordWrap(True)
-        layout.addWidget(detail)
+        self.title_label = QLabel()
+        self.title_label.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.title_label)
+        self.detail = QLabel()
+        self.detail.setTextFormat(Qt.TextFormat.PlainText)
+        self.detail.setWordWrap(True)
+        layout.addWidget(self.detail)
         self.backups = QListWidget()
         self.backups.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         try:
@@ -97,18 +80,30 @@ class RecoveryDialog(QDialog):
             self._backup_paths = []
         for backup in self._backup_paths:
             self.backups.addItem(backup.name)
-        layout.addWidget(QLabel("可用备份（选择后恢复）："))
+        self.backups_label = QLabel()
+        layout.addWidget(self.backups_label)
         layout.addWidget(self.backups)
         buttons = QDialogButtonBox()
-        self.retry_btn = buttons.addButton("重试", QDialogButtonBox.ButtonRole.AcceptRole)
-        self.restore_btn = buttons.addButton("恢复选中备份", QDialogButtonBox.ButtonRole.ActionRole)
-        self.import_btn = buttons.addButton("导入其他记录", QDialogButtonBox.ButtonRole.ActionRole)
-        self.exit_btn = buttons.addButton("退出", QDialogButtonBox.ButtonRole.RejectRole)
+        self.retry_btn = buttons.addButton(" ", QDialogButtonBox.ButtonRole.AcceptRole)
+        self.restore_btn = buttons.addButton(" ", QDialogButtonBox.ButtonRole.ActionRole)
+        self.import_btn = buttons.addButton(" ", QDialogButtonBox.ButtonRole.ActionRole)
+        self.exit_btn = buttons.addButton(" ", QDialogButtonBox.ButtonRole.RejectRole)
         self.retry_btn.clicked.connect(self._retry)
         self.restore_btn.clicked.connect(self.restore_selected)
         self.import_btn.clicked.connect(self._import)
         self.exit_btn.clicked.connect(self._exit)
         layout.addWidget(buttons)
+        self.retranslate_ui()
+
+    def retranslate_ui(self):
+        self.setWindowTitle(i18n.tr("dialog.recovery"))
+        self.title_label.setText(i18n.tr("dialog.recovery_title"))
+        self.detail.setText(f"{i18n.tr('record.file')}: {self.path}\n{error_text(self.error)}")
+        self.backups_label.setText(i18n.tr("dialog.available_backups"))
+        self.retry_btn.setText(i18n.tr("button.retry"))
+        self.restore_btn.setText(i18n.tr("button.restore"))
+        self.import_btn.setText(i18n.tr("button.import"))
+        self.exit_btn.setText(i18n.tr("button.exit"))
 
     def _retry(self):
         self.retry_requested.emit()
@@ -123,11 +118,11 @@ class RecoveryDialog(QDialog):
     def restore_selected(self):
         row = self.backups.currentRow()
         if row < 0:
-            QMessageBox.information(self, "选择备份", "请先选择一个备份。")
+            i18n.information(self, i18n.tr("dialog.choose_backup"), i18n.tr("dialog.choose_backup_hint"))
             return
         backup = self._backup_paths[row]
-        answer = QMessageBox.question(
-            self, "确认恢复", f"将用此备份替换当前记录：\n{backup.name}\n是否继续？",
+        answer = i18n.question(
+            self, i18n.tr("dialog.confirm"), i18n.tr("dialog.confirm_restore", name=backup.name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -160,4 +155,4 @@ class RecoveryDialog(QDialog):
             self.recovered.emit(data)
             self.accept()
         except AppError as exc:
-            QMessageBox.critical(self, "恢复失败", error_text(exc))
+            i18n.critical(self, i18n.tr("dialog.restore_failed"), error_text(exc))

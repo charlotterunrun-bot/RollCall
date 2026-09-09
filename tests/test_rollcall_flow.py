@@ -21,7 +21,7 @@ def test_write_failure_keeps_current_student_and_data(monkeypatch, qapp):
     calls = []
     monkeypatch.setattr("excel_io.write_record", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("disk")))
     monkeypatch.setattr(win, "_begin_pick", lambda: calls.append("pick"))
-    monkeypatch.setattr("main_window.QMessageBox.critical", lambda *a, **k: None)
+    monkeypatch.setattr("main_window.i18n.critical", lambda *a, **k: None)
     win.on_record("到")
     assert win.current is student
     assert data.students[0].records == {}
@@ -42,7 +42,7 @@ def test_stale_click_after_date_rollover_does_not_write(monkeypatch, qapp):
     writes = []
     monkeypatch.setattr(main_window.excel_io, "load_record", lambda *a, **k: data)
     monkeypatch.setattr(main_window.excel_io, "write_record", lambda *a, **k: writes.append(a))
-    monkeypatch.setattr("main_window.QMessageBox.information", lambda *a, **k: None)
+    monkeypatch.setattr("main_window.i18n.information", lambda *a, **k: None)
     win.current = student
     win.on_record("到")
     assert writes == []
@@ -127,7 +127,7 @@ def test_date_refresh_failure_is_latched_until_explicit_reload(qapp, monkeypatch
     warnings = []
     monkeypatch.setattr(main_window, "current_date_string", lambda: "2026-09-10")
     monkeypatch.setattr(main_window, "_load_with_sheet_choice", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("locked")))
-    monkeypatch.setattr(main_window.QMessageBox, "warning", lambda *a, **k: warnings.append(a[1]))
+    monkeypatch.setattr(main_window.i18n, "warning", lambda *a, **k: warnings.append(a[1]))
     win.today = "2026-09-09"
     assert win._ensure_current_day() is False
     assert win._ensure_current_day() is False
@@ -148,7 +148,7 @@ def test_completed_screen_rolls_over_and_next_day_can_start(qapp, monkeypatch):
     today = {"value": "2026-09-09"}
     monkeypatch.setattr(main_window, "current_date_string", lambda: today["value"])
     monkeypatch.setattr(main_window, "_load_with_sheet_choice", lambda *a, **k: data)
-    monkeypatch.setattr(main_window.QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(main_window.i18n, "information", lambda *a, **k: None)
     win = MainWindow(data=data, acquire_lock=False)
     win.start_rollcall()
     assert win._finished is True

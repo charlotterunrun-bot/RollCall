@@ -1,0 +1,111 @@
+import json
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def reset_language():
+    import i18n
+    i18n.set_language("zh_CN")
+    yield
+    i18n.set_language("zh_CN")
+
+
+def test_locale_resources_have_matching_keys_and_placeholders():
+    import i18n
+
+    zh = json.loads(Path(i18n.locale_path("zh_CN")).read_text(encoding="utf-8"))
+    en = json.loads(Path(i18n.locale_path("en_US")).read_text(encoding="utf-8"))
+    assert set(zh) == set(en)
+    assert {k for k in zh if "{" in zh[k]} == {k for k in en if "{" in en[k]}
+    for key in zh:
+        assert i18n.placeholders(zh[key]) == i18n.placeholders(en[key])
+
+
+def test_translation_and_unknown_language_fallback():
+    import i18n
+
+    i18n.set_language("zh_CN")
+    assert i18n.tr("app.title") == "课堂点名"
+    i18n.set_language("unsupported")
+    assert i18n.language() == "en_US"
+    assert i18n.tr("app.title") == "RollCall"
+    assert i18n.tr("missing.key") == "missing.key"
+
+
+def test_error_translation_tolerates_optional_context():
+    import i18n
+    from errors import AppError
+
+    i18n.set_language("en_US")
+    assert "attendance status" in i18n.error_text(AppError("excel.invalid_status"))
+    assert "settings" in i18n.error_text(AppError("config.invalid", field="strategy"))
+
+
+def test_language_persistence_validates_types(tmp_path, monkeypatch):
+    import config
+    import paths
+
+    monkeypatch.setattr(paths, "record_dir", lambda: str(tmp_path))
+    config.save_settings(language="en_US")
+    assert config.load_language() == "en_US"
+    Path(paths.config_path()).write_text(json.dumps({"language": 1}), encoding="utf-8")
+    with pytest.raises(Exception) as exc:
+        config.load_language()
+    assert getattr(exc.value, "code", None) == "config.invalid"
+
+
+def test_initialize_uses_system_language_when_no_persisted_choice(monkeypatch, tmp_path):
+    import i18n
+    import paths
+
+    monkeypatch.setattr(paths, "config_path", lambda: str(tmp_path / "missing-config.json"))
+    class FakeLocale:
+        def name(self):
+            return "en_GB"
+
+        def uiLanguages(self):
+            return ["en-GB"]
+
+    monkeypatch.setattr(i18n.QLocale, "system", staticmethod(lambda: FakeLocale()))
+    assert i18n.initialize() is None
+    assert i18n.language() == "en_US"
+
+
+def test_initialize_maps_qt_chinese_locale_and_unknown_persisted_choice(monkeypatch, tmp_path):
+    import i18n
+    import paths
+
+    class ChineseLocale:
+        def name(self):
+            return "zh_CN"
+
+        def uiLanguages(self):
+            return ["zh-Hans-CN", "zh-CN"]
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"language": "pirate"}), encoding="utf-8")
+    monkeypatch.setattr(paths, "config_path", lambda: str(config_path))
+    monkeypatch.setattr(i18n.QLocale, "system", staticmethod(lambda: ChineseLocale()))
+    assert i18n.initialize() is None
+    assert i18n.language() == "en_US"
+
+
+def test_message_box_standard_buttons_use_active_language(qapp, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    import i18n
+
+    seen = []
+
+    def fake_exec(box):
+        seen.append({box.standardButton(button): button.text() for button in box.buttons()})
+        return int(QMessageBox.StandardButton.No)
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    i18n.set_language("en_US")
+    assert i18n.question(None, "Confirm", "Continue?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) == QMessageBox.StandardButton.No
+    assert set(seen[-1].values()) == {"Yes", "No"}
+    i18n.set_language("zh_CN")
+    i18n.information(None, "完成", "完成")
+    assert seen[-1].get(QMessageBox.StandardButton.Ok) == "确定"
