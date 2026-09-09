@@ -1,6 +1,6 @@
 """Compatibility regressions for legacy record files."""
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from excel_io import load_record, read_namelist, write_record
 
@@ -10,8 +10,8 @@ def test_legacy_chinese_record_writes_chinese_status(tmp_path):
     wb = Workbook()
     ws = wb.active
     ws.title = "record"
-    ws.append([" 序号\ufeff", "学号", "姓名", "班级", "2026-09-08"])
-    ws.append([1, "0001", "旧记录", "A", "到"])
+    ws.append([" 序号\ufeff", "学号", "姓名", "班级", "备注", "2026-09-08"])
+    ws.append([1, "0001", "旧记录", "A", "保留", "到"])
     wb.save(path)
     wb.close()
 
@@ -20,6 +20,10 @@ def test_legacy_chinese_record_writes_chinese_status(tmp_path):
 
     assert result.storage_language == "zh_CN"
     assert result.students[0].records == {"2026-09-08": "到", "2026-09-09": "假"}
+    reopened = load_workbook(path, data_only=False)
+    assert [cell.value for cell in reopened["record"][1][:7]] == [" 序号\ufeff", "学号", "姓名", "班级", "备注", "2026-09-08", "2026-09-09"]
+    assert [cell.value for cell in reopened["record"][2][:7]] == [1, "0001", "旧记录", "A", "保留", "到", "假"]
+    reopened.close()
 
 
 def test_snapshot_conflict_stops_write(tmp_path):

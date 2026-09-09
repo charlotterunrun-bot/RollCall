@@ -270,6 +270,29 @@ def test_write_is_transactional_preserves_sheets_and_reloads_snapshot(tmp_path):
     wb.close()
 
 
+def test_write_returns_committed_candidate_when_final_reload_would_fail(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    p = tmp_path / "record.xlsx"
+    _save(p, [("record", [["序号", "学号", "姓名", "班级"], [1, "S1", "One", "A"]])])
+    data = load_record(p)
+    excel_module = __import__("excel_io")
+    original_load = excel_module.load_record
+
+    def fail_only_final_target(path=None, *, sheet_name=None):
+        if path is not None and Path(path) == p:
+            raise RuntimeError("simulated postcommit reload failure")
+        return original_load(path, sheet_name=sheet_name)
+
+    monkeypatch.setattr(excel_module, "load_record", fail_only_final_target)
+    result = write_record("S1", "2026-09-09", "到", data=data)
+
+    assert result.source_path == p
+    assert result.fingerprint
+    assert result.students[0].records == {"2026-09-09": "到"}
+    assert p.is_file()
+
+
 def test_write_rejects_second_attendance_and_preserves_bytes(tmp_path):
     p = tmp_path / "record.xlsx"
     _save(p, [("record", [["序号", "学号", "姓名", "班级", "2026-09-09"], [1, "S1", "One", "A", "到"]])])
