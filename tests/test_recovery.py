@@ -4,6 +4,12 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture
+def qapp():
+    from PySide6.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
 def test_probe_record_distinguishes_missing_empty_and_ready(tmp_path, monkeypatch):
     import excel_io
 
@@ -54,3 +60,38 @@ def test_config_save_uses_atomic_write_and_keeps_corrupt_bytes_as_backup(tmp_pat
     backups = storage.list_backups(cfg)
     assert backups
     assert any(p.read_bytes() == b"{broken" for p in backups)
+
+
+def test_restore_uses_one_sheet_choice_for_all_validator_calls(tmp_path, monkeypatch, qapp):
+    from PySide6.QtWidgets import QMessageBox
+    from errors import AppError
+    from excel_io import RollCallData
+    import recovery_dialog
+    import storage
+
+    target = tmp_path / "record.xlsx"
+    backup = tmp_path / "record.xlsx.20260909T000000000000Z.0123456789abcdef0123456789abcdef.manual.bak"
+    backup.write_bytes(b"synthetic")
+    monkeypatch.setattr(storage, "list_backups", lambda path: [backup])
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+    choices = []
+    monkeypatch.setattr(recovery_dialog, "choose_sheet", lambda *a, **k: choices.append("record") or "record")
+    calls = []
+
+    def load(path, **kwargs):
+        calls.append(kwargs.get("sheet_name"))
+        if len(calls) == 1:
+            raise AppError("excel.ambiguous_sheets", sheets=["record", "backup"])
+        return RollCallData([], {}, source_path=path, sheet_name=kwargs.get("sheet_name"))
+
+    monkeypatch.setattr(recovery_dialog.excel_io, "load_record", load)
+    monkeypatch.setattr(storage, "restore_backup", lambda path, source, validator: (validator(source), validator(source), "hash")[2])
+    dialog = recovery_dialog.RecoveryDialog(target, AppError("excel.invalid_file", path=str(target)))
+    dialog.recovered.connect(lambda data: setattr(dialog, "result_data", data))
+    dialog.backups.setCurrentRow(0)
+    dialog.restore_selected()
+    assert choices == ["record"]
+    assert calls == [None, "record", "record"]
+    assert dialog.result_data.sheet_name == "record"
+    dialog.close()

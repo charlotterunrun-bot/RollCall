@@ -33,6 +33,9 @@ class InitWindow(QWidget):
         lock, self._session_lock = self._session_lock, None
         return lock
 
+    def supplied_session_lock(self):
+        return self._session_lock
+
     def closeEvent(self, event):
         if self._session_lock is not None:
             self._session_lock.unlock()

@@ -134,16 +134,21 @@ class RecoveryDialog(QDialog):
         if answer != QMessageBox.StandardButton.Yes:
             return
         candidate = {}
+        selected_sheet = {"name": None}
 
         def validate(candidate_path):
             try:
-                candidate["data"] = excel_io.load_record(candidate_path)
+                if selected_sheet["name"] is None:
+                    candidate["data"] = excel_io.load_record(candidate_path)
+                else:
+                    candidate["data"] = excel_io.load_record(candidate_path, sheet_name=selected_sheet["name"])
             except AppError as exc:
                 if exc.code != "excel.ambiguous_sheets":
                     raise
                 sheet = choose_sheet(self, exc.params.get("sheets", []))
                 if not sheet:
                     raise
+                selected_sheet["name"] = sheet
                 candidate["data"] = excel_io.load_record(candidate_path, sheet_name=sheet)
 
         try:

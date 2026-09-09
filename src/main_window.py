@@ -21,6 +21,7 @@ import strategy
 from config_dialog import ConfigDialog
 from errors import AppError
 from recovery_dialog import RecoveryDialog, choose_sheet, error_text
+from record_actions import import_record
 
 _FONT_FAMILIES = ["PingFang SC", "Microsoft YaHei", "Segoe UI"]
 _MARQUEE_TICK_MS = 30
@@ -71,19 +72,26 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(640, 480)
         self.data_path = Path(data_path or paths.record_path())
         self._session_lock = session_lock
+        # A supplied lock remains owned by the caller until construction has
+        # completed successfully; this lets init/recovery retry safely.
+        self._owns_session_lock = False
         if acquire_lock and session_lock is None:
             self._acquire_session_lock()
         try:
             self.data = data or _load_with_sheet_choice(self.data_path, self, sheet_name)
         except Exception:
-            self._release_session_lock()
+            if self._owns_session_lock:
+                self._release_session_lock()
             raise
+        if self._session_lock is not None:
+            self._owns_session_lock = True
         self.strategy, self.marquee_enabled, self.marquee_duration = self._read_settings()
         self.today = current_date_string()
         self.appeared = set()
         self.current = None
         self._finished = False
         self._date_refreshing = False
+        self._pending_date_error = None
         self._build_menu()
         self._build_stack()
 
@@ -111,6 +119,7 @@ class MainWindow(QMainWindow):
 
     def _acquire_session_lock(self):
         self._session_lock = acquire_session_lock(self.data_path)
+        self._owns_session_lock = True
 
     def _release_session_lock(self):
         if self._session_lock is not None:
@@ -118,6 +127,10 @@ class MainWindow(QMainWindow):
                 self._session_lock.unlock()
             finally:
                 self._session_lock = None
+
+    def supplied_session_lock(self):
+        """Return the lock for caller-owned handover without removing it."""
+        return self._session_lock
 
     # ------------------------------------------------------------------ UI
     def _build_menu(self):
@@ -227,16 +240,20 @@ class MainWindow(QMainWindow):
             return True
         if self._date_refreshing:
             return False
+        if self._pending_date_error == new_day:
+            return False
         self._date_refreshing = True
         try:
             try:
                 refreshed = _load_with_sheet_choice(self.data_path, self, self.data.sheet_name)
             except Exception as exc:
+                self._pending_date_error = new_day
                 QMessageBox.warning(self, "新日期读取失败", error_text(exc))
                 return False
             was_finished = self._finished
             self.data = refreshed
             self.today = new_day
+            self._pending_date_error = None
             self.appeared.clear()
             self.current = None
             self._finished = False
@@ -394,36 +411,22 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "导入失败", error_text(exc))
             return None
-        if source.resolve() == self.data_path.resolve():
-            QMessageBox.warning(self, "导入失败", "源文件已经是当前记录文件。")
-            return None
-        expected = storage.fingerprint(self.data_path)
-        if expected is not None:
-            answer = QMessageBox.question(self, "确认替换", "导入将替换当前记录，并先保留备份。是否继续？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
-            if answer != QMessageBox.StandardButton.Yes:
-                return None
-        candidate = {}
         try:
-            raw = source.read_bytes()
-
-            def writer(temp):
-                temp.write_bytes(raw)
-
-            def validator(temp):
-                candidate["data"] = excel_io.load_record(temp, sheet_name=source_data.sheet_name)
-
-            committed = storage.atomic_write(self.data_path, writer, validator, expected_fingerprint=expected, backup_kind="manual")
-            imported = candidate["data"]
-            imported.source_path = self.data_path
-            imported.fingerprint = committed
+            imported = import_record(
+                source, self.data_path, source_data,
+                confirm=lambda: QMessageBox.question(
+                    self, "确认替换", "导入将替换当前记录，并先保留备份。是否继续？",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                ) == QMessageBox.StandardButton.Yes,
+            )
+            if imported is None:
+                return None
             self._apply_restored_data(imported)
             QMessageBox.information(self, "导入完成", "已有记录已导入，请重新抽选学生。")
             return imported
         except AppError as exc:
             QMessageBox.critical(self, "导入失败", error_text(exc))
-            return None
-        except OSError:
-            QMessageBox.critical(self, "导入失败", error_text(AppError("storage_read_failed", path=str(source))))
             return None
 
     def _apply_restored_data(self, data):
@@ -445,6 +448,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "重新读取失败", error_text(exc))
             raise
         self.data = data
+        self._pending_date_error = None
         self.appeared.clear()
         self.current = None
         self._finished = False

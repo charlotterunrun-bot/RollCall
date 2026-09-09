@@ -14,7 +14,7 @@ from init_window import InitWindow
 from main_window import MainWindow, _load_with_sheet_choice, acquire_session_lock
 from recovery_dialog import RecoveryDialog, error_text
 from style import STYLESHEET
-import storage
+from record_actions import import_record
 
 
 def _show_init(app, *, session_lock=None):
@@ -23,10 +23,11 @@ def _show_init(app, *, session_lock=None):
 
     def on_initialized():
         try:
-            main_window = MainWindow(session_lock=window.take_session_lock())
+            main_window = MainWindow(session_lock=window.supplied_session_lock())
         except AppError as exc:
             QMessageBox.critical(window, "启动失败", error_text(exc))
             return
+        window.take_session_lock()
         holder["main"] = main_window
         main_window.show()
         window.close()
@@ -50,25 +51,11 @@ def _import_existing_record(parent, target):
     source = Path(source_name)
     try:
         source_data = _load_with_sheet_choice(source, parent)
-        expected = storage.fingerprint(target)
-        if expected is not None:
+        def confirm():
             answer = QMessageBox.question(parent, "确认替换", "导入将替换当前记录，并先保留备份。是否继续？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
-            if answer != QMessageBox.StandardButton.Yes:
-                return None
-        raw = source.read_bytes()
-        candidate = {}
+            return answer == QMessageBox.StandardButton.Yes
 
-        def writer(temp):
-            temp.write_bytes(raw)
-
-        def validator(temp):
-            candidate["data"] = excel_io.load_record(temp, sheet_name=source_data.sheet_name)
-
-        committed = storage.atomic_write(target, writer, validator, expected_fingerprint=expected, backup_kind="manual")
-        data = candidate["data"]
-        data.source_path = target
-        data.fingerprint = committed
-        return data
+        return import_record(source, target, source_data, confirm=confirm)
     except AppError as exc:
         QMessageBox.critical(parent, "导入失败", error_text(exc))
         return None
