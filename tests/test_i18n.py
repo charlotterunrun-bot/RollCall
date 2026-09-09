@@ -122,6 +122,33 @@ def test_error_context_keeps_supplied_actionable_details():
     assert all(value in config_message for value in ("language", "C:/records/config.json", "invalid JSON"))
 
 
+def test_formula_error_location_is_optional_and_rendered_once():
+    import i18n
+    from errors import AppError
+
+    i18n.set_language("en_US")
+    without_location = i18n.error_text(AppError("excel.formula_key_field", path="C:/records/class.xlsx"))
+    assert "row" not in without_location and "column" not in without_location
+    assert "C:/records/class.xlsx" in without_location
+    with_location = i18n.error_text(AppError("excel.formula_key_field", path="C:/records/class.xlsx", row=12, column=8))
+    assert with_location.count("row: 12") == 1
+    assert with_location.count("column: 8") == 1
+
+
+def test_known_config_reasons_are_localized_and_unknown_reasons_preserved():
+    import i18n
+    from errors import AppError
+
+    for language, expected in (("zh_CN", "无效 JSON"), ("en_US", "invalid JSON")):
+        i18n.set_language(language)
+        message = i18n.error_text(AppError("config.invalid", path="config.json", reason="invalid JSON"))
+        assert expected in message
+        if language == "zh_CN":
+            assert "invalid JSON" not in message
+    i18n.set_language("zh_CN")
+    assert "custom reason" in i18n.error_text(AppError("config.invalid", reason="custom reason"))
+
+
 def test_locale_json_has_no_duplicate_keys():
     import i18n
 

@@ -17,6 +17,10 @@ SUPPORTED_LANGUAGES = ("zh_CN", "en_US")
 _language = "zh_CN"
 _resources = {}
 _PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_KNOWN_REASONS = {
+    "object required": {"en_US": "object required", "zh_CN": "需要对象"},
+    "invalid JSON": {"en_US": "invalid JSON", "zh_CN": "无效 JSON"},
+}
 
 
 def locale_path(language: str) -> str:
@@ -138,6 +142,8 @@ def error_text(error: BaseException) -> str:
     if error.code == "excel.invalid_header":
         sheet = params.get("sheet")
         params["sheet"] = f" (worksheet: {sheet})" if sheet and language() == "en_US" else (f"（工作表：{sheet}）" if sheet else "")
+    if error.code == "config.invalid" and params.get("reason") in _KNOWN_REASONS:
+        params["reason"] = _KNOWN_REASONS[params["reason"]][language()]
     key = f"error.{error.code}"
     text = tr(key, **params) if key in _load(_language) or key in _load("en_US") else tr("error.unknown", code=error.code, **params)
     return text + _error_context(error.code, params)
@@ -148,7 +154,7 @@ def _error_context(code: str, params: dict) -> str:
     fields = ("path", "sheet", "row", "column", "range", "reason")
     rendered = {
         "excel.invalid_header": {"sheet"}, "excel.sheet_not_found": {"sheet"},
-        "excel.formula_key_field": {"row", "column"}, "excel.merged_key_field": {"range"},
+        "excel.merged_key_field": {"range"},
         "excel.invalid_sequence": {"row", "column"}, "excel.invalid_student_id": {"row", "column"},
         "excel.empty_student_id": {"row"}, "excel.empty_student_name": {"row"},
         "excel.duplicate_student_id": {"row"}, "excel.student_id_precision": {"row", "column"},
@@ -165,7 +171,7 @@ def _error_context(code: str, params: dict) -> str:
         "range": "range" if language() == "en_US" else "范围",
         "reason": "reason" if language() == "en_US" else "原因",
     }
-    parts = [f"{labels[field]}={params[field]}" for field in fields if field in params and params[field] not in (None, "") and field not in rendered]
+    parts = [f"{labels[field]}: {params[field]}" for field in fields if field in params and params[field] not in (None, "") and field not in rendered]
     if not parts:
         return ""
     return (" [" + "; ".join(parts) + "]") if language() == "en_US" else ("（" + "；".join(parts) + "）")
