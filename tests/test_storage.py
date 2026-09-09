@@ -222,3 +222,189 @@ def test_transaction_lock_is_nonblocking_and_released(tmp_path):
 
     with storage.transaction_lock(path):
         pass
+
+
+def test_restore_rejects_destination_change_before_replace(tmp_path):
+    import storage
+    from errors import AppError
+
+    path = tmp_path / "record.xlsx"
+    path.write_bytes(b"valid:old")
+    backup = storage.create_backup(path, kind="manual")
+    path.write_bytes(b"valid:current")
+
+    def validator(candidate):
+        _valid(candidate)
+        if candidate.name.endswith(".tmp"):
+            path.write_bytes(b"valid:external")
+
+    with pytest.raises(AppError) as exc:
+        storage.restore_backup(path, backup, validator)
+
+    assert exc.value.code == "storage_conflict"
+    assert path.read_bytes() == b"valid:external"
+    pre_restore = [p for p in storage.list_backups(path) if ".pre_restore." in p.name]
+    assert len(pre_restore) == 1
+    assert pre_restore[0].read_bytes() == b"valid:current"
+
+
+def test_restore_rejects_destination_appearing_before_replace(tmp_path):
+    import storage
+    from errors import AppError
+
+    path = tmp_path / "record.xlsx"
+    backup_source = tmp_path / "source.xlsx"
+    backup_source.write_bytes(b"valid:restore")
+
+    def validator(candidate):
+        _valid(candidate)
+        if candidate.name.endswith(".tmp"):
+            path.write_bytes(b"valid:external")
+
+    with pytest.raises(AppError) as exc:
+        storage.restore_backup(path, backup_source, validator)
+
+    assert exc.value.code == "storage_conflict"
+    assert path.read_bytes() == b"valid:external"
+    pre_restore = [p for p in storage.list_backups(path) if ".pre_restore." in p.name]
+    assert pre_restore == []
+
+
+def test_atomic_write_returns_known_hash_when_target_read_fails_after_replace(
+    tmp_path, monkeypatch
+):
+    import storage
+
+    path = tmp_path / "record.xlsx"
+    path.write_bytes(b"valid:old")
+    expected = storage.fingerprint(path)
+    original_fingerprint = storage.fingerprint
+
+    def fail_new_target_read(candidate):
+        if candidate == path and path.read_bytes() == b"valid:new":
+            raise OSError("target was locked after replacement")
+        return original_fingerprint(candidate)
+
+    monkeypatch.setattr(storage, "fingerprint", fail_new_target_read)
+    result = storage.atomic_write(
+        path, lambda temp: temp.write_bytes(b"valid:new"), _valid,
+        expected_fingerprint=expected,
+    )
+
+    assert result == hashlib.sha256(b"valid:new").hexdigest()
+    assert path.read_bytes() == b"valid:new"
+
+
+def test_restore_returns_committed_hash_if_target_changes_after_replace(
+    tmp_path, monkeypatch
+):
+    import storage
+
+    path = tmp_path / "record.xlsx"
+    path.write_bytes(b"valid:old")
+    backup = storage.create_backup(path, kind="manual")
+    original_replace = storage._replace
+
+    def replace_then_external_edit(temp, target):
+        original_replace(temp, target)
+        target.write_bytes(b"valid:external")
+
+    monkeypatch.setattr(storage, "_replace", replace_then_external_edit)
+    result = storage.restore_backup(path, backup, _valid)
+
+    assert result == hashlib.sha256(b"valid:old").hexdigest()
+    assert path.read_bytes() == b"valid:external"
+
+
+def test_restore_rejects_inconsistent_pre_restore_copy(tmp_path, monkeypatch):
+    import storage
+    from errors import AppError
+
+    path = tmp_path / "record.xlsx"
+    path.write_bytes(b"valid:old")
+    source = storage.create_backup(path, kind="manual")
+    path.write_bytes(b"valid:current")
+    original_copy = storage.shutil.copy2
+
+    def corrupt_pre_restore(src, destination, *args, **kwargs):
+        result = original_copy(src, destination, *args, **kwargs)
+        if ".pre_restore." in Path(destination).name:
+            Path(destination).write_bytes(b"valid:corrupt")
+        return result
+
+    monkeypatch.setattr(storage.shutil, "copy2", corrupt_pre_restore)
+    with pytest.raises(AppError) as exc:
+        storage.restore_backup(path, source, _valid)
+
+    assert exc.value.code == "storage_conflict"
+    assert path.read_bytes() == b"valid:current"
+
+
+def test_atomic_write_rejects_inconsistent_auto_backup(tmp_path, monkeypatch):
+    import storage
+    from errors import AppError
+
+    path = tmp_path / "record.xlsx"
+    path.write_bytes(b"valid:old")
+    original_copy = storage.shutil.copy2
+
+    def corrupt_auto(src, destination, *args, **kwargs):
+        result = original_copy(src, destination, *args, **kwargs)
+        if ".auto." in Path(destination).name:
+            Path(destination).write_bytes(b"valid:corrupt")
+        return result
+
+    monkeypatch.setattr(storage.shutil, "copy2", corrupt_auto)
+    with pytest.raises(AppError) as exc:
+        storage.atomic_write(
+            path, lambda temp: temp.write_bytes(b"valid:new"), _valid,
+            expected_fingerprint=storage.fingerprint(path),
+        )
+
+    assert exc.value.code == "storage_conflict"
+    assert path.read_bytes() == b"valid:old"
+
+
+def test_pruning_parses_backup_kind_for_auto_in_target_name(tmp_path):
+    import storage
+
+    path = tmp_path / "record.auto.xlsx"
+    path.write_bytes(b"valid:0")
+    permanent = storage.create_backup(path, kind="upgrade")
+
+    for index in range(1, 56):
+        storage.atomic_write(
+            path, lambda temp, i=index: temp.write_bytes(f"valid:{i}".encode()),
+            _valid, expected_fingerprint=storage.fingerprint(path),
+        )
+
+    backups = storage.list_backups(path)
+    assert permanent in backups
+    assert ".upgrade." in permanent.name
+    assert len([p for p in backups if p.name.endswith(".auto.bak")]) == 50
+
+
+def test_lock_permission_failure_is_not_reported_as_contention(tmp_path, monkeypatch):
+    import storage
+    from errors import AppError
+    from PySide6.QtCore import QLockFile
+
+    class PermissionDeniedLock:
+        def __init__(self, path):
+            self.path = path
+
+        def setStaleLockTime(self, timeout):
+            pass
+
+        def tryLock(self, timeout):
+            return False
+
+        def error(self):
+            return QLockFile.LockError.PermissionError
+
+    monkeypatch.setattr(storage, "QLockFile", PermissionDeniedLock)
+    with pytest.raises(AppError) as exc:
+        with storage.transaction_lock(tmp_path / "record.xlsx"):
+            pass
+
+    assert exc.value.code == "storage_lock_failed"

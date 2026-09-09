@@ -77,7 +77,11 @@ def transaction_lock(path: Path) -> Iterator[QLockFile]:
         # a terminated process does not permanently block future saves.
         lock.setStaleLockTime(60_000)
         if not lock.tryLock(0):
-            raise AppError(STORAGE_LOCKED, path=str(path))
+            error = lock.error()
+            if error == QLockFile.LockError.LockFailedError:
+                raise AppError(STORAGE_LOCKED, path=str(path))
+            reason = getattr(error, "name", str(error))
+            raise AppError(STORAGE_LOCK_FAILED, path=str(path), reason=reason)
     except AppError:
         raise
     except Exception as exc:
@@ -108,14 +112,17 @@ def list_backups(path: Path) -> list[Path]:
     """List application backups newest first; missing directories are empty."""
     path = _as_path(path)
     directory = _backup_dir(path)
-    if not directory.is_dir():
-        return []
-    pattern = _backup_pattern(path)
-    result = [
-        entry
-        for entry in directory.iterdir()
-        if entry.is_file() and pattern.match(entry.name)
-    ]
+    try:
+        if not directory.is_dir():
+            return []
+        pattern = _backup_pattern(path)
+        result = [
+            entry
+            for entry in directory.iterdir()
+            if entry.is_file() and pattern.match(entry.name)
+        ]
+    except Exception as exc:
+        raise AppError(STORAGE_READ_FAILED, path=str(directory)) from exc
     return sorted(result, key=lambda entry: entry.name, reverse=True)
 
 
@@ -142,6 +149,17 @@ def _create_backup_locked(path: Path, kind: str) -> Path:
     return destination
 
 
+def _verify_backup_copy(backup: Path, expected: str | None, target: Path) -> None:
+    """Ensure a raw backup still represents the bytes captured from target."""
+    if fingerprint(backup) == expected:
+        return
+    try:
+        backup.unlink(missing_ok=True)
+    except Exception:
+        logger.warning("Could not remove inconsistent backup %s", backup, exc_info=True)
+    raise AppError(STORAGE_CONFLICT, path=str(target))
+
+
 def create_backup(path: Path, *, kind: str = "manual") -> Path:
     """Create a uniquely named backup of *path* under the private backup dir."""
     path = _as_path(path)
@@ -151,7 +169,13 @@ def create_backup(path: Path, *, kind: str = "manual") -> Path:
 
 
 def _prune_auto_backups(path: Path) -> None:
-    auto = [entry for entry in list_backups(path) if ".auto." in entry.name]
+    pattern = _backup_pattern(path)
+    auto = [
+        entry
+        for entry in list_backups(path)
+        if (match := pattern.match(entry.name)) is not None
+        and match.group("kind") == "auto"
+    ]
     for entry in auto[AUTO_BACKUP_LIMIT:]:
         entry.unlink()
 
@@ -214,12 +238,16 @@ def atomic_write(
     with transaction_lock(path):
         _check_expected(path, expected_fingerprint)
         if path.is_file():
-            _create_backup_locked(path, backup_kind)
+            backup = _create_backup_locked(path, backup_kind)
+            _verify_backup_copy(backup, expected_fingerprint, path)
 
         temp = _make_temp(path)
         try:
             _run_writer(temp, writer)
             _run_validator(temp, validator)
+            candidate_fingerprint = fingerprint(temp)
+            if candidate_fingerprint is None:
+                raise AppError(STORAGE_READ_FAILED, path=str(temp))
             # The target may have appeared or changed while the writer and
             # validator ran.  This check is intentionally immediately before
             # os.replace to narrow the external-editor race window.
@@ -231,9 +259,7 @@ def atomic_write(
             except Exception:
                 logger.warning("Could not clean temporary storage file %s", temp, exc_info=True)
 
-        committed = fingerprint(path)
-        if committed is None:
-            raise AppError(STORAGE_READ_FAILED, path=str(path))
+        committed = candidate_fingerprint
         if backup_kind == "auto":
             try:
                 _prune_auto_backups(path)
@@ -270,9 +296,14 @@ def restore_backup(
         raise AppError(STORAGE_INVALID_BACKUP, path=str(backup))
 
     with transaction_lock(path):
+        # Capture the destination state before validating/copying the source.
+        # This also treats an initially missing destination as a real
+        # expectation: a file appearing during restore must not be replaced.
+        destination_fingerprint = fingerprint(path)
         source_fingerprint = _validate_backup(backup, validator)
         if path.is_file():
-            _create_backup_locked(path, "pre_restore")
+            pre_restore = _create_backup_locked(path, "pre_restore")
+            _verify_backup_copy(pre_restore, destination_fingerprint, path)
 
         temp = _make_temp(path)
         try:
@@ -281,8 +312,15 @@ def restore_backup(
             except Exception as exc:
                 raise AppError(STORAGE_WRITE_FAILED, path=str(temp)) from exc
             _run_validator(temp, validator)
+            candidate_fingerprint = fingerprint(temp)
+            if candidate_fingerprint is None:
+                raise AppError(STORAGE_READ_FAILED, path=str(temp))
             if fingerprint(backup) != source_fingerprint:
                 raise AppError(STORAGE_CONFLICT, path=str(backup))
+            # The pre-restore copy is only a snapshot of the destination at
+            # transaction time.  Check the live destination immediately
+            # before replacement so an external edit remains intact.
+            _check_expected(path, destination_fingerprint)
             _replace(temp, path)
         finally:
             try:
@@ -290,8 +328,4 @@ def restore_backup(
             except Exception:
                 logger.warning("Could not clean restore temp file %s", temp, exc_info=True)
 
-        committed = fingerprint(path)
-        if committed is None:
-            raise AppError(STORAGE_READ_FAILED, path=str(path))
-        return committed
-
+        return candidate_fingerprint
