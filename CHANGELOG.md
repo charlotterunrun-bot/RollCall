@@ -2,6 +2,10 @@
 
 ## v2.0.0 — current upgrade
 
+### v2.0.0 中文摘要
+
+v2.0.0 在保留 v1.0.0 基线的基础上，加入每日每名学生最多一条记录、当天完成后不再开启第二轮、随机/按序与计重复/不计重复四种组合规则、可配置走马灯，以及中英文界面和 Excel 存储语言。版本还加入冲突检测、成功保存后仅保留最新 50 份自动备份、永久升级/手工/恢复前快照、恢复与旧记录导入，并提供 Windows 11 x64 EXE 与 macOS 15+ Apple Silicon ARM64 ZIP。已有 v1 `.xlsx` 记录可直接打开或导入，v1.0.0 发布和资产继续独立保留。
+
 ### Added
 
 - Daily progress now excludes every student with a valid attendance entry for the current date, and the day finishes once all students have an entry.
@@ -25,6 +29,10 @@
 - v2 keeps the v1.0.0 release and its assets as a separate baseline; it does not overwrite that release.
 
 ## v1.0.0 — original baseline
+
+### v1.0.0 中文摘要
+
+v1.0.0 是最初的 Windows 课堂点名基线版本，支持花名册导入、点名记录和 Excel 存储。该版本的公开发布和资产作为原始基线继续保留，不被 v2.0.0 覆盖。
 
 - Original Windows classroom roll-call release, preserved as the byte-identical public baseline asset.
 - Basic roster import, roll-call recording, and workbook storage.

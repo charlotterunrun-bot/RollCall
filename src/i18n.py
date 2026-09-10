@@ -144,6 +144,11 @@ def error_text(error: BaseException) -> str:
         params["sheet"] = f" (worksheet: {sheet})" if sheet and language() == "en_US" else (f"（工作表：{sheet}）" if sheet else "")
     if error.code == "config.invalid" and params.get("reason") in _KNOWN_REASONS:
         params["reason"] = _KNOWN_REASONS[params["reason"]][language()]
+    if error.code == "excel.duplicate_date" and params.get("columns"):
+        columns = params["columns"]
+        if isinstance(columns, (list, tuple)):
+            separator = ", " if language() == "en_US" else "、"
+            params["columns"] = separator.join(str(column) for column in columns)
     key = f"error.{error.code}"
     text = tr(key, **params) if key in _load(_language) or key in _load("en_US") else tr("error.unknown", code=error.code, **params)
     return text + _error_context(error.code, params)

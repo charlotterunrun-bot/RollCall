@@ -122,6 +122,38 @@ def test_error_context_keeps_supplied_actionable_details():
     assert all(value in config_message for value in ("language", "C:/records/config.json", "invalid JSON"))
 
 
+def test_duplicate_date_error_localizes_physical_columns_from_parser(tmp_path):
+    from openpyxl import Workbook
+    import excel_io
+    import i18n
+    from errors import AppError
+
+    path = tmp_path / "duplicate-date.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "record"
+    sheet.append(["序号", "学号", "姓名", "班级", "2026-09-09", "备注", "2026/09/09"])
+    sheet.append([1, "S1", "One", "A", "", "keep", ""])
+    workbook.save(path)
+    workbook.close()
+
+    caught = None
+    try:
+        excel_io.load_record(path)
+    except AppError as error:
+        assert error.code == "excel.duplicate_date"
+        caught = error
+    else:
+        raise AssertionError("duplicate date was accepted")
+
+    for language, expected in (("en_US", "physical columns: 5, 7"), ("zh_CN", "物理列：5、7")):
+        i18n.set_language(language)
+        message = i18n.error_text(caught)
+        assert "2026-09-09" in message
+        assert expected in message
+        assert "5" in message and "7" in message
+
+
 def test_formula_error_location_is_optional_and_rendered_once():
     import i18n
     from errors import AppError

@@ -95,7 +95,7 @@
   "error.excel.duplicate_field": "The required field {field} appears in more than one column.",
   "error.excel.invalid_date_header": "The date header {header} is invalid.",
   "error.excel.ambiguous_date_header": "The date header {header} is ambiguous; use YYYY-MM-DD.",
-  "error.excel.duplicate_date": "The date {date} appears in multiple columns.",
+  "error.excel.duplicate_date": "The date {date} appears in multiple columns (physical columns: {columns}).",
   "error.excel.formula_key_field": "A formula was found in a key field.",
   "error.excel.merged_key_field": "A merged cell was found in a key field ({range}).",
   "error.excel.invalid_status": "The attendance status {value} is invalid.",

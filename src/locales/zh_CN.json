@@ -95,7 +95,7 @@
   "error.excel.duplicate_field": "必需字段 {field} 出现在多个列中。",
   "error.excel.invalid_date_header": "日期表头 {header} 无效。",
   "error.excel.ambiguous_date_header": "日期表头 {header} 有歧义，请使用 YYYY-MM-DD。",
-  "error.excel.duplicate_date": "日期 {date} 出现在多个列中。",
+  "error.excel.duplicate_date": "日期 {date} 出现在多个列中（物理列：{columns}）。",
   "error.excel.formula_key_field": "关键字段包含公式。",
   "error.excel.merged_key_field": "关键字段包含合并单元格（{range}）。",
   "error.excel.invalid_status": "考勤状态 {value} 无效。",
