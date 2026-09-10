@@ -32,9 +32,11 @@ def test_release_workflow_has_read_only_default_and_narrow_write_job():
     assert "SHA256SUMS.txt" in workflow
     assert "git cat-file -t \"refs/tags/$RELEASE_TAG\"" in workflow
     assert "git rev-parse \"refs/tags/$RELEASE_TAG^{}\"" in workflow
+    assert '[[ "$RELEASE_TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]' in workflow
     assert "4832fee5d3866e823122f2e591dd732bb0824f88" in workflow
     assert "eafa13b6fedd69cc5b47b39d08826e181f97d221" in workflow
     assert "gh release create" in workflow
+    assert "gh release create \"$RELEASE_TAG\" --verify-tag" in workflow
     assert "--clobber" not in workflow
 
 
