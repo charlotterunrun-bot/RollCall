@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
 
-          version="$(sed -nE 's/^__version__ = ["'"']([^"'"']+)["'"']$/\1/p' src/version.py)"
+          version="$(awk -F '"' '/^__version__ = / {print $2; exit}' src/version.py)"
           test -n "$version"
           test "$RELEASE_TAG" = "v$version"
           test "$(git cat-file -t "refs/tags/$RELEASE_TAG" 2>/dev/null || true)" = tag

@@ -1,6 +1,11 @@
 """Static contract checks for the v2 release workflow and acceptance materials."""
 
 from pathlib import Path
+import platform
+import shutil
+import subprocess
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,6 +13,28 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def _bash_run_blocks(workflow: str) -> list[str]:
+    lines = workflow.splitlines()
+    blocks = []
+    for index, line in enumerate(lines):
+        if line != "        run: |":
+            continue
+        body = []
+        for candidate in lines[index + 1 :]:
+            if candidate and len(candidate) - len(candidate.lstrip()) <= 8:
+                break
+            body.append(candidate[10:] if candidate else "")
+        blocks.append("\n".join(body) + "\n")
+    return blocks
+
+
+def _bash_executable() -> str | None:
+    if platform.system() == "Windows":
+        git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+        return str(git_bash) if git_bash.is_file() else None
+    return shutil.which("bash")
 
 
 def test_native_workflow_is_reusable_and_branch_pushes_do_not_duplicate_tag_runs():
@@ -51,3 +78,15 @@ def test_release_notes_and_manual_checklist_state_actual_distribution_boundaries
     assert "notar" in notes.lower()
     for item in ("下载并打开", "两种语言", "虚构学生", "三种状态", "当天", "文件占用", "创建手工备份", "Excel"):
         assert item in checklist
+
+
+@pytest.mark.skipif(_bash_executable() is None, reason="bash is required for workflow shell syntax validation")
+def test_every_release_bash_run_block_passes_bash_n(tmp_path):
+    blocks = _bash_run_blocks(_read(".github/workflows/release.yml"))
+    assert len(blocks) == 3
+    bash = _bash_executable()
+    for index, script in enumerate(blocks, start=1):
+        script_path = tmp_path / f"release-run-{index}.sh"
+        script_path.write_text(script, encoding="utf-8")
+        result = subprocess.run([bash, "-n", str(script_path)], capture_output=True, text=True, check=False)
+        assert result.returncode == 0, f"run block {index} has invalid Bash syntax: {result.stderr}"
