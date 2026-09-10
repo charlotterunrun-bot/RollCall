@@ -65,10 +65,15 @@ def test_release_workflow_has_read_only_default_and_narrow_write_job():
     assert "gh release create" in workflow
     assert "gh release create \"$RELEASE_TAG\" --verify-tag" in workflow
     assert "--clobber" not in workflow
+    assert "default: v2.1.0" in workflow
+    assert "NOTES_FILE: docs/release-notes-v2.1.0.md" in workflow
 
 
 def test_release_notes_and_manual_checklist_state_actual_distribution_boundaries():
-    notes = _read("docs/release-notes-v2.0.0.md")
+    namespace = {}
+    exec((ROOT / "src" / "version.py").read_text(encoding="utf-8"), namespace)
+    version = namespace["__version__"]
+    notes = _read("docs/release-notes-v2.1.0.md")
     checklist = _read("docs/manual-acceptance-checklist.md")
     for text in (notes, checklist):
         assert "Windows 11 x64" in text
@@ -76,7 +81,10 @@ def test_release_notes_and_manual_checklist_state_actual_distribution_boundaries
     assert "unsigned" in notes
     assert "ad-hoc" in notes
     assert "notar" in notes.lower()
-    for item in ("下载并打开", "两种语言", "虚构学生", "三种状态", "当天", "文件占用", "创建手工备份", "Excel"):
+    assert f"v{version}" in notes
+    assert "本次点名结束" in notes and "End this roll call session" in notes
+    assert "record.xlsx" in notes and "backup" in notes.lower()
+    for item in ("下载并打开", "小屏", "两种语言", "本次点名结束", "虚构学生", "一个结束对话框", "重新打开"):
         assert item in checklist
 
 

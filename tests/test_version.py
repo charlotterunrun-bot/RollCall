@@ -25,6 +25,7 @@ def test_single_version_source_is_semver_and_window_title_uses_it():
     exec(source, namespace)
     assert namespace["window_title"]("RollCall") == f"RollCall · {version}"
     assert _version() == version
+    assert version == "2.1.0"
 
 
 def test_windows_metadata_and_asset_name_follow_source_version():
@@ -75,6 +76,7 @@ def test_macos_metadata_assets_about_and_ci_use_same_version():
 
 
 def test_bilingual_readmes_link_each_other_and_document_daily_rule():
+    version = _version()
     chinese = (ROOT / "README.md").read_text(encoding="utf-8")
     english = (ROOT / "README.en.md").read_text(encoding="utf-8")
     assert "README.en.md" in chinese
@@ -82,3 +84,7 @@ def test_bilingual_readmes_link_each_other_and_document_daily_rule():
     assert "每天最多一条" in chinese
     assert "Each student can have at most one attendance entry per calendar day" in english
     assert "所有人都已记录后结束" in chinese and "complete second round" in english
+    assert f"v{version}" in chinese and f"v{version}" in english
+    assert "本次点名结束" in chinese and "End this roll call session" in english
+    assert "640x480" in chinese and "640x480" in english
+    assert "小屏" in chinese and "small screen" in english

@@ -4,8 +4,8 @@ RollCall 是桌面课堂点名工具，提供 Windows 11 x64 单文件程序，�
 
 ## 下载
 
-- Windows 11 x64：[v2.0.0 发布资产](https://github.com/charlotterunrun-bot/RollCall/releases/tag/v2.0.0)，文件名为 `RollCall-2.0.0-Windows-x64.exe`。
-- macOS 15+ Apple Silicon：[v2.0.0 发布资产](https://github.com/charlotterunrun-bot/RollCall/releases/tag/v2.0.0)，文件名为 `RollCall-2.0.0-macOS-arm64.zip`。
+- Windows 11 x64：[v2.1.0 发布资产](https://github.com/charlotterunrun-bot/RollCall/releases/tag/v2.1.0)，文件名为 `RollCall-2.1.0-Windows-x64.exe`。
+- macOS 15+ Apple Silicon：[v2.1.0 发布资产](https://github.com/charlotterunrun-bot/RollCall/releases/tag/v2.1.0)，文件名为 `RollCall-2.1.0-macOS-arm64.zip`。
 - [v1.0.0 基线发布](https://github.com/charlotterunrun-bot/RollCall/releases/tag/v1.0.0)及其资产继续单独保留。
 
 Windows 程序当前未签名。macOS 应用使用 ad-hoc 签名校验包完整性，未经过 Apple 公证；首次打开时，macOS 可能要求在“隐私与安全性”中允许打开。当前自动证据为 [Native CI run 34378297463](https://github.com/charlotterunrun-bot/RollCall/actions/runs/34378297463)：Windows 测试、实际打包 Windows 离屏 smoke、macOS ARM64 测试、实际打包 macOS 离屏 smoke、应用架构检查和 ad-hoc 签名检查均已通过。Windows 11 x64 也用实际 EXE 做过离屏验证。当前没有手动 Mac 桌面验收；可见 Windows 桌面点击仍待完成，因为现有显示自动化报告没有可用显示器。
@@ -20,6 +20,8 @@ Windows 程序当前未签名。macOS 应用使用 ad-hoc 签名校验包完整�
 每名学生每天最多一条考勤记录。当日日期列已有任何有效记录的学生会被跳过；当天所有人都已记录后结束，不能当天再点完整的第二轮。进度来自当前工作簿：恢复旧工作簿或手动删除当天记录，会改变当天剩余的学生。
 
 启用走马灯时，学生信息会快速滚动，并在设定时长后停下，之后才能点击考勤按钮。切换语言只翻译界面，不会重新抽选、写入考勤或重置进度。
+
+底部可选勾选“本次点名结束”。提交当前学生时，软件会先成功保存记录，再显示一次结束提示；点击“确定”后退出。下次启动会从工作簿继续剩余学生。普通屏幕默认客户区为 640x480，窗口可以放大；可用空间较短的小屏会自动适配并允许滚动，确保底部控件仍可操作。
 
 ## 四种点名规则
 
@@ -56,7 +58,7 @@ Windows 源码运行和 Windows EXE 默认将 `RollCallRecord` 放在 EXE 旁边
 
 以下情况会被拒绝并保留原文件供恢复：无法读取的文件；缺少或重复必需表头；重复日期或含歧义日期格式；多个可用工作表而未明确选择；重复或空学号；空姓名；关键字段或日期列含公式；关键区域合并；无效状态；不支持的工作簿结构。记录文件使用 `.xlsx`；`.xls` 仅用于花名册导入。Excel 正在打开或其他程序修改文件时，软件会检测冲突并要求重新读取；不要在保存考勤期间编辑工作簿。
 
-## 从 v1.0.0 升级到 v2.0.0
+## 从 v1.0.0 升级到 v2.1.0
 
 1. 结束或停止 v1 并关闭程序；在替换文件前单独复制 v1 的 `record.xlsx`。
 2. 下载对应平台的 v2 资产。Windows 将 v2 EXE 放在原有 `RollCallRecord` 文件夹旁；macOS 启动 v2 后使用默认 Application Support 目录，若程序提示目录不可写则选择存放记录的目录。
@@ -67,11 +69,11 @@ Mac 导入旧记录：把旧 `record.xlsx` 放在可访问的位置，启动 v2�
 
 ## 开发与打包
 
-源代码位于 `src/`，唯一版本源是 `src/version.py`。当前软件版本为 `2.0.0`；Windows 四段文件版本为 `2.0.0.0`，产品和包版本字符串为 `2.0.0`。使用 Python 3.12 和仓库中的锁定依赖：
+源代码位于 `src/`，唯一版本源是 `src/version.py`。当前软件版本为 `2.1.0`；Windows 四段文件版本为 `2.1.0.0`，产品和包版本字符串为 `2.1.0`。使用 Python 3.12 和仓库中的锁定依赖：
 
 ```powershell
 .venv\Scripts\python.exe -m pytest -q
 .venv\Scripts\python.exe -m PyInstaller --noconfirm --clean RollCall.spec
 ```
 
-平台脚本会生成 `RollCall-2.0.0-Windows-x64.exe` 和 `RollCall-2.0.0-macOS-arm64.zip`。公开仓库不得提交真实名单、考勤、配置、备份、凭据、虚拟环境或临时证据。
+平台脚本会生成 `RollCall-2.1.0-Windows-x64.exe` 和 `RollCall-2.1.0-macOS-arm64.zip`。公开仓库不得提交真实名单、考勤、配置、备份、凭据、虚拟环境或临时证据。

@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.1.0 — session control and compact screens
+
+### v2.1.0 中文摘要
+
+v2.1.0 增加两项点名体验改进：可选的“本次点名结束”勾选项会在成功保存当前学生后显示一次结束提示，确认后退出，重新启动可从工作簿继续剩余学生；启动窗口在普通屏幕使用可调整的 640x480 默认客户区，在较短的小屏上自动适配并支持滚动以保持底部控件可达。每日完成规则、`record.xlsx` 数据格式和备份行为保持不变。
+
+### v2.1.0 English summary
+
+v2.1.0 adds two user-facing improvements: an optional **End this roll call session** checkbox saves the current student before showing one end-of-session dialog and closing after confirmation, while the next launch continues with remaining students; the startup window keeps a resizable 640x480 default client area and fits or scrolls on short screens so bottom controls remain reachable. Daily completion rules, the `record.xlsx` data format, and backup behavior are unchanged.
+
 ## v2.0.0 — current upgrade
 
 ### v2.0.0 中文摘要

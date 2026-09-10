@@ -9,7 +9,7 @@ on:
       tag:
         description: Existing annotated version tag to validate and package
         required: true
-        default: v2.0.0
+        default: v2.1.0
         type: string
 
 permissions:
@@ -79,7 +79,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
       VERSION: ${{ needs.preflight.outputs.version }}
-      NOTES_FILE: docs/release-notes-v2.0.0.md
+      NOTES_FILE: docs/release-notes-v2.1.0.md
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
