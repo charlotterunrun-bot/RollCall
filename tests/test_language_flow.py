@@ -77,6 +77,24 @@ def test_language_switch_during_real_marquee_and_reveal_preserves_state(qapp):
     win.close()
 
 
+def test_language_switch_preserves_end_session_checkbox_state(qapp):
+    import i18n
+    from main_window import MainWindow
+
+    i18n.set_language("zh_CN")
+    win = MainWindow(data=_data(), acquire_lock=False)
+    win.end_checkbox.setChecked(True)
+    i18n.set_language("en_US")
+    win.retranslate_ui()
+    assert win.end_checkbox.isChecked()
+    assert win.end_checkbox.text() == "End this roll call session"
+    i18n.set_language("zh_CN")
+    win.retranslate_ui()
+    assert win.end_checkbox.isChecked()
+    assert win.end_checkbox.text() == "本次点名结束"
+    win.close()
+
+
 def test_language_switch_on_completed_page_only_retranslates_completion(qapp, monkeypatch):
     import i18n
     import main_window
@@ -153,6 +171,20 @@ def test_english_geometry_keeps_window_and_config_readable(qapp):
     assert dialog.combo_language.isVisible()
     dialog.close()
     main.close()
+
+
+def test_compact_rollcall_keeps_bottom_controls_reachable(qapp):
+    from main_window import MainWindow
+
+    win = MainWindow(data=_data(), acquire_lock=False)
+    win.show()
+    qapp.processEvents()
+    win.start_rollcall()
+    win.resize(640, 300)
+    qapp.processEvents()
+    assert win.end_checkbox.isVisible()
+    assert win.stop_btn.isVisible()
+    win.close()
 
 
 def test_init_window_geometry_and_long_hint_in_both_languages(qapp):

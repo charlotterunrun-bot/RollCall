@@ -138,6 +138,59 @@ def test_date_refresh_failure_is_latched_until_explicit_reload(qapp, monkeypatch
     win.close()
 
 
+def test_checked_successful_save_ends_session_with_one_dialog(monkeypatch, qapp):
+    import main_window
+    from main_window import MainWindow
+    from excel_io import Student, RollCallData
+
+    student = Student(2, "1", "S1", "A", {}, {})
+    data = RollCallData([student], {}, source_path="record.xlsx", sheet_name="record")
+    win = MainWindow(data=data, acquire_lock=False)
+    win.current = student
+    win._finished = False
+    win.end_checkbox.setChecked(True)
+    dialogs = []
+    picks = []
+    closed = []
+    monkeypatch.setattr(main_window.excel_io, "write_record", lambda *args, **kwargs: data)
+    monkeypatch.setattr(main_window.i18n, "information", lambda *args: dialogs.append(args[1:]))
+    monkeypatch.setattr(win, "_begin_pick", lambda **kwargs: picks.append(kwargs))
+    monkeypatch.setattr(win, "close", lambda: closed.append(True))
+
+    win.on_record("到")
+
+    assert dialogs == [("本次点名结束", "本次点名已结束。")]
+    assert picks == []
+    assert closed == [True]
+    assert win.data is data
+    assert student.records == {}
+    win.deleteLater()
+
+
+def test_checked_save_failure_keeps_session_open_and_checked(monkeypatch, qapp):
+    import main_window
+    from main_window import MainWindow
+    from excel_io import Student, RollCallData
+
+    student = Student(2, "1", "S1", "A", {}, {})
+    data = RollCallData([student], {}, source_path="record.xlsx", sheet_name="record")
+    win = MainWindow(data=data, acquire_lock=False)
+    win.current = student
+    win._finished = False
+    win.end_checkbox.setChecked(True)
+    closed = []
+    monkeypatch.setattr(main_window.excel_io, "write_record", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("disk")))
+    monkeypatch.setattr(main_window.i18n, "critical", lambda *args, **kwargs: None)
+    monkeypatch.setattr(win, "close", lambda: closed.append(True))
+
+    win.on_record("到")
+
+    assert win.current is student
+    assert win.end_checkbox.isChecked()
+    assert closed == []
+    win.close()
+
+
 def test_completed_screen_rolls_over_and_next_day_can_start(qapp, monkeypatch):
     import main_window
     from main_window import MainWindow

@@ -3,7 +3,7 @@
 import shutil
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QMargins, QSize, Qt, Signal
 from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 import config
@@ -15,6 +15,7 @@ from errors import AppError
 from recovery_dialog import choose_sheet, error_text
 from main_window import acquire_session_lock
 from version import window_title
+from window_geometry import DEFAULT_CLIENT_SIZE, fit_window_geometry, frame_fits_available
 
 
 class InitWindow(QWidget):
@@ -27,6 +28,9 @@ class InitWindow(QWidget):
         self.setMinimumSize(560, 420)
         self.target_path = Path(target_path or paths.record_path())
         self._session_lock = session_lock
+        self._window_screen = None
+        self._window_handle = None
+        self._geometry_initialized = False
         if acquire_lock and session_lock is None:
             self._session_lock = acquire_session_lock(self.target_path)
         self._build()
@@ -91,6 +95,60 @@ class InitWindow(QWidget):
         self.language_label.setText(i18n.tr("menu.language"))
         self.btn_template.setText(i18n.tr("button.download_template"))
         self.btn_pick.setText(i18n.tr("button.choose_roster"))
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._connect_screen_tracking()
+        if not self._geometry_initialized:
+            self._geometry_initialized = True
+            self._fit_to_screen(force=True)
+
+    def _connect_screen_tracking(self):
+        handle = self.windowHandle()
+        screen = handle.screen() if handle is not None else self.screen()
+        if handle is not self._window_handle:
+            if self._window_handle is not None:
+                try:
+                    self._window_handle.screenChanged.disconnect(self._screen_changed)
+                except (RuntimeError, TypeError):
+                    pass
+            self._window_handle = handle
+            if handle is not None:
+                handle.screenChanged.connect(self._screen_changed)
+        if screen is self._window_screen:
+            return
+        if self._window_screen is not None:
+            try:
+                self._window_screen.availableGeometryChanged.disconnect(self._available_geometry_changed)
+            except (RuntimeError, TypeError):
+                pass
+        self._window_screen = screen
+        if screen is not None:
+            screen.availableGeometryChanged.connect(self._available_geometry_changed)
+
+    def _screen_changed(self, screen):
+        self._window_screen = None
+        self._connect_screen_tracking()
+        self._fit_to_screen()
+
+    def _available_geometry_changed(self, *_):
+        self._fit_to_screen()
+
+    def _fit_to_screen(self, *, force=False):
+        handle = self.windowHandle()
+        screen = self._window_screen or (handle.screen() if handle else self.screen())
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        if not force and frame_fits_available(self.frameGeometry(), available):
+            return
+        margins = handle.frameMargins() if handle is not None else QMargins()
+        desired = DEFAULT_CLIENT_SIZE if force else self.size()
+        client, frame = fit_window_geometry(available, margins, desired)
+        minimum = self.minimumSize()
+        self.setMinimumSize(QSize(min(minimum.width(), client.width()), min(minimum.height(), client.height())))
+        self.resize(client)
+        self.move(frame.topLeft())
 
     def _language_changed(self, index):
         candidate = self.combo_language.itemData(index)

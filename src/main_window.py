@@ -6,12 +6,12 @@ import datetime
 import random
 from pathlib import Path
 
-from PySide6.QtCore import QLockFile, QTimer, Qt
+from PySide6.QtCore import QLockFile, QMargins, QTimer, Qt, QSize
 from PySide6.QtGui import QAction, QDesktopServices, QFont
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
-    QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
-    QPushButton, QStackedWidget, QVBoxLayout, QWidget,
+    QFileDialog, QCheckBox, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
+    QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 import config
@@ -25,6 +25,7 @@ from config_dialog import ConfigDialog
 from errors import AppError
 from recovery_dialog import RecoveryDialog, choose_sheet, error_text
 from record_actions import import_record
+from window_geometry import DEFAULT_CLIENT_SIZE, fit_window_geometry, frame_fits_available
 
 _FONT_FAMILIES = ["PingFang SC", "Microsoft YaHei", "Segoe UI"]
 _MARQUEE_TICK_MS = 30
@@ -95,6 +96,9 @@ class MainWindow(QMainWindow):
         self._finished = False
         self._date_refreshing = False
         self._pending_date_error = None
+        self._window_screen = None
+        self._window_handle = None
+        self._geometry_initialized = False
         self._build_menu()
         self._build_stack()
 
@@ -190,7 +194,16 @@ class MainWindow(QMainWindow):
 
         roll_page = QWidget()
         roll_page.setObjectName("root")
-        outer = QVBoxLayout(roll_page)
+        page_layout = QVBoxLayout(roll_page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
+        scroll = QScrollArea(roll_page)
+        scroll.setObjectName("rollScroll")
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        roll_content = QWidget()
+        outer = QVBoxLayout(roll_content)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         info = QWidget()
@@ -241,11 +254,16 @@ class MainWindow(QMainWindow):
         self.stop_btn.setObjectName("stopButton")
         self.stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.stop_btn.clicked.connect(self.on_stop)
+        self.end_checkbox = QCheckBox()
+        self.end_checkbox.setObjectName("endSessionCheckBox")
+        bottom_layout.addWidget(self.end_checkbox)
         bottom_layout.addStretch(1)
         bottom_layout.addWidget(self.stop_btn)
         outer.addWidget(info, 1)
         outer.addWidget(separator)
         outer.addWidget(bottom)
+        scroll.setWidget(roll_content)
+        page_layout.addWidget(scroll)
         self.stack.addWidget(start_page)
         self.stack.addWidget(roll_page)
         self.retranslate_ui()
@@ -272,6 +290,7 @@ class MainWindow(QMainWindow):
         self.btn_leave.setText(i18n.tr("button.leave"))
         self.btn_absent.setText(i18n.tr("button.absent"))
         self.stop_btn.setText(i18n.tr("button.stop"))
+        self.end_checkbox.setText(i18n.tr("checkbox.end_session"))
         if self._finished:
             self.name_label.setText(i18n.tr("status.completed"))
         self._update_fonts()
@@ -339,6 +358,7 @@ class MainWindow(QMainWindow):
             return
         self.appeared.clear()
         self._finished = False
+        self.end_checkbox.setChecked(False)
         self.stack.setCurrentIndex(1)
         self._begin_pick(check_date=False)
 
@@ -412,6 +432,11 @@ class MainWindow(QMainWindow):
             i18n.critical(self, i18n.tr("dialog.save_failed"), error_text(exc))
             return
         self.data = result
+        if self.end_checkbox.isChecked():
+            self._set_record_buttons_enabled(False)
+            i18n.information(self, i18n.tr("dialog.session_end_title"), i18n.tr("dialog.session_end_text"))
+            self.close()
+            return
         self._begin_pick(check_date=False)
 
     def _recover_from_conflict(self, error):
@@ -536,6 +561,60 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._update_fonts()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._connect_screen_tracking()
+        if not self._geometry_initialized:
+            self._geometry_initialized = True
+            self._fit_to_screen(force=True)
+
+    def _connect_screen_tracking(self):
+        handle = self.windowHandle()
+        screen = handle.screen() if handle is not None else self.screen()
+        if handle is not self._window_handle:
+            if self._window_handle is not None:
+                try:
+                    self._window_handle.screenChanged.disconnect(self._screen_changed)
+                except (RuntimeError, TypeError):
+                    pass
+            self._window_handle = handle
+            if handle is not None:
+                handle.screenChanged.connect(self._screen_changed)
+        if screen is self._window_screen:
+            return
+        if self._window_screen is not None:
+            try:
+                self._window_screen.availableGeometryChanged.disconnect(self._available_geometry_changed)
+            except (RuntimeError, TypeError):
+                pass
+        self._window_screen = screen
+        if screen is not None:
+            screen.availableGeometryChanged.connect(self._available_geometry_changed)
+
+    def _screen_changed(self, screen):
+        self._window_screen = None
+        self._connect_screen_tracking()
+        self._fit_to_screen()
+
+    def _available_geometry_changed(self, *_):
+        self._fit_to_screen()
+
+    def _fit_to_screen(self, *, force=False):
+        handle = self.windowHandle()
+        screen = self._window_screen or (handle.screen() if handle else self.screen())
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        if not force and frame_fits_available(self.frameGeometry(), available):
+            return
+        margins = handle.frameMargins() if handle is not None else QMargins()
+        desired = DEFAULT_CLIENT_SIZE if force else self.size()
+        client, frame = fit_window_geometry(available, margins, desired)
+        minimum = self.minimumSize()
+        self.setMinimumSize(QSize(min(minimum.width(), client.width()), min(minimum.height(), client.height())))
+        self.resize(client)
+        self.move(frame.topLeft())
 
     def _update_fonts(self):
         height = self.height()
