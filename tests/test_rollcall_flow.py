@@ -145,6 +145,8 @@ def test_checked_successful_save_ends_session_with_one_dialog(monkeypatch, qapp)
 
     student = Student(2, "1", "S1", "A", {}, {})
     data = RollCallData([student], {}, source_path="record.xlsx", sheet_name="record")
+    saved_student = Student(2, "1", "S1", "A", {}, {"2026-09-10": "到"})
+    saved_data = RollCallData([saved_student], {}, source_path="record.xlsx", sheet_name="record")
     win = MainWindow(data=data, acquire_lock=False)
     win.current = student
     win._finished = False
@@ -152,7 +154,7 @@ def test_checked_successful_save_ends_session_with_one_dialog(monkeypatch, qapp)
     dialogs = []
     picks = []
     closed = []
-    monkeypatch.setattr(main_window.excel_io, "write_record", lambda *args, **kwargs: data)
+    monkeypatch.setattr(main_window.excel_io, "write_record", lambda *args, **kwargs: saved_data)
     monkeypatch.setattr(main_window.i18n, "information", lambda *args: dialogs.append(args[1:]))
     monkeypatch.setattr(win, "_begin_pick", lambda **kwargs: picks.append(kwargs))
     monkeypatch.setattr(win, "close", lambda: closed.append(True))
@@ -162,8 +164,8 @@ def test_checked_successful_save_ends_session_with_one_dialog(monkeypatch, qapp)
     assert dialogs == [("本次点名结束", "本次点名已结束。")]
     assert picks == []
     assert closed == [True]
-    assert win.data is data
-    assert student.records == {}
+    assert win.data is saved_data
+    assert win.data.students[0].records["2026-09-10"] == "到"
     win.deleteLater()
 
 
@@ -188,6 +190,64 @@ def test_checked_save_failure_keeps_session_open_and_checked(monkeypatch, qapp):
     assert win.current is student
     assert win.end_checkbox.isChecked()
     assert closed == []
+    win.close()
+
+
+def test_checked_final_student_ends_without_daily_completion_dialog(monkeypatch, qapp):
+    import main_window
+    from main_window import MainWindow
+    from excel_io import Student, RollCallData
+
+    student = Student(2, "1", "S1", "A", {}, {})
+    data = RollCallData([student], {}, source_path="record.xlsx", sheet_name="record")
+    saved_student = Student(2, "1", "S1", "A", {}, {"2026-09-10": "到"})
+    saved_data = RollCallData([saved_student], {}, source_path="record.xlsx", sheet_name="record")
+    win = MainWindow(data=data, acquire_lock=False)
+    win.current = student
+    win._finished = False
+    win.end_checkbox.setChecked(True)
+    writes = []
+    dialogs = []
+    picks = []
+    finishes = []
+    closed = []
+    monkeypatch.setattr(main_window.excel_io, "write_record", lambda *args, **kwargs: (writes.append(args), saved_data)[1])
+    monkeypatch.setattr(main_window.i18n, "information", lambda *args: dialogs.append(args[1:]))
+    monkeypatch.setattr(win, "_begin_pick", lambda **kwargs: picks.append(kwargs))
+    monkeypatch.setattr(win, "_finish", lambda: finishes.append(True))
+    monkeypatch.setattr(win, "close", lambda: closed.append(True))
+
+    win.on_record("到")
+
+    assert len(writes) == 1
+    assert dialogs == [("本次点名结束", "本次点名已结束。")]
+    assert picks == []
+    assert finishes == []
+    assert closed == [True]
+    assert win.data is saved_data
+    win.deleteLater()
+
+
+def test_attendance_buttons_disable_during_save_and_reenable_after_failure(monkeypatch, qapp):
+    import main_window
+    from main_window import MainWindow
+    from excel_io import Student, RollCallData
+
+    student = Student(2, "1", "S1", "A", {}, {})
+    data = RollCallData([student], {}, source_path="record.xlsx", sheet_name="record")
+    win = MainWindow(data=data, acquire_lock=False)
+    win.current = student
+    win._finished = False
+    win._set_record_buttons_enabled(True)
+    states = []
+    monkeypatch.setattr(main_window.excel_io, "write_record", lambda *args, **kwargs: (states.append(win.btn_present.isEnabled()), (_ for _ in ()).throw(RuntimeError("disk")))[1])
+    monkeypatch.setattr(main_window.i18n, "critical", lambda *args, **kwargs: None)
+
+    win.on_record("到")
+
+    assert states == [False]
+    assert win.btn_present.isEnabled()
+    assert win.current is student
     win.close()
 
 

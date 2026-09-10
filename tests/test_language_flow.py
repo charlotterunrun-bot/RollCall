@@ -157,7 +157,10 @@ def test_english_geometry_keeps_window_and_config_readable(qapp):
 
     i18n.set_language("en_US")
     main = MainWindow(data=_two_student_data(), acquire_lock=False)
-    main.resize(640, 480)
+    main.show()
+    qapp.processEvents()
+    assert main.size().width() == 640
+    assert main.size().height() == 480
     assert main.minimumSize().width() >= 640
     assert main.minimumSize().height() >= 480
     assert main.btn_present.sizeHint().width() < main.width() / 2
@@ -174,17 +177,28 @@ def test_english_geometry_keeps_window_and_config_readable(qapp):
 
 
 def test_compact_rollcall_keeps_bottom_controls_reachable(qapp):
+    import i18n
     from main_window import MainWindow
+    from PySide6.QtCore import QPoint, QRect
 
-    win = MainWindow(data=_data(), acquire_lock=False)
-    win.show()
-    qapp.processEvents()
-    win.start_rollcall()
-    win.resize(640, 300)
-    qapp.processEvents()
-    assert win.end_checkbox.isVisible()
-    assert win.stop_btn.isVisible()
-    win.close()
+    for language in ("zh_CN", "en_US"):
+        i18n.set_language(language)
+        win = MainWindow(data=_data(), acquire_lock=False)
+        win.show()
+        qapp.processEvents()
+        win.start_rollcall()
+        win.resize(640, 300)
+        qapp.processEvents()
+        scroll = win.findChild(__import__("PySide6.QtWidgets", fromlist=["QScrollArea"]).QScrollArea, "rollScroll")
+        viewport = scroll.viewport().rect()
+        control_rects = [QRect(control.mapTo(scroll.viewport(), QPoint(0, 0)), control.size()) for control in (win.end_checkbox, win.stop_btn)]
+        if not all(viewport.intersects(rect) for rect in control_rects):
+            assert scroll.verticalScrollBar().maximum() > 0
+            scroll.ensureWidgetVisible(win.stop_btn)
+            qapp.processEvents()
+            control_rects = [QRect(control.mapTo(scroll.viewport(), QPoint(0, 0)), control.size()) for control in (win.end_checkbox, win.stop_btn)]
+        assert all(viewport.intersects(rect) for rect in control_rects)
+        win.close()
 
 
 def test_init_window_geometry_and_long_hint_in_both_languages(qapp):

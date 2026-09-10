@@ -25,3 +25,16 @@ def test_frame_fits_available_reports_existing_frame_without_refit():
     available = QRect(0, 0, 800, 600)
     assert frame_fits_available(QRect(80, 60, 640, 480), available)
     assert not frame_fits_available(QRect(80, 60, 640, 480), QRect(0, 0, 700, 500))
+
+
+def test_fit_window_geometry_keeps_tiny_screen_frame_valid_and_on_screen():
+    from window_geometry import fit_window_geometry, frame_fits_available
+
+    available = QRect(0, 0, 10, 10)
+    client, frame = fit_window_geometry(available, QMargins(8, 32, 8, 8))
+
+    assert client.width() >= 1
+    assert client.height() >= 1
+    assert frame.isValid()
+    assert available.contains(frame)
+    assert frame_fits_available(frame, available)

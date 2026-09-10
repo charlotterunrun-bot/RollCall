@@ -99,6 +99,7 @@ class MainWindow(QMainWindow):
         self._window_screen = None
         self._window_handle = None
         self._geometry_initialized = False
+        self._record_in_progress = False
         self._build_menu()
         self._build_stack()
 
@@ -417,9 +418,11 @@ class MainWindow(QMainWindow):
             self._set_record_buttons_enabled(True)
 
     def on_record(self, value):
-        if self.current is None or self._finished or not self._ensure_current_day():
+        if self.current is None or self._finished or self._record_in_progress or not self._ensure_current_day():
             return
         student = self.current
+        self._record_in_progress = True
+        self._set_record_buttons_enabled(False)
         try:
             result = excel_io.write_record(student.no, self.today, value, data=self.data)
         except AppError as exc:
@@ -427,11 +430,18 @@ class MainWindow(QMainWindow):
                 self._recover_from_conflict(exc)
             else:
                 i18n.critical(self, i18n.tr("dialog.save_failed"), error_text(exc))
+                if self.current is student and not self._finished:
+                    self._set_record_buttons_enabled(True)
+            self._record_in_progress = False
             return
         except Exception as exc:
             i18n.critical(self, i18n.tr("dialog.save_failed"), error_text(exc))
+            if self.current is student and not self._finished:
+                self._set_record_buttons_enabled(True)
+            self._record_in_progress = False
             return
         self.data = result
+        self._record_in_progress = False
         if self.end_checkbox.isChecked():
             self._set_record_buttons_enabled(False)
             i18n.information(self, i18n.tr("dialog.session_end_title"), i18n.tr("dialog.session_end_text"))

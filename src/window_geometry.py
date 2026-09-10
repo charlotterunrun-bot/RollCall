@@ -7,11 +7,15 @@ SAFETY_MARGIN = 12
 
 
 def _safe_available(available: QRect) -> QRect:
-    return available.adjusted(
-        SAFETY_MARGIN,
-        SAFETY_MARGIN,
-        -SAFETY_MARGIN,
-        -SAFETY_MARGIN,
+    width = max(1, available.width())
+    height = max(1, available.height())
+    horizontal_inset = min(SAFETY_MARGIN, max(0, (width - 1) // 2))
+    vertical_inset = min(SAFETY_MARGIN, max(0, (height - 1) // 2))
+    return QRect(
+        available.left() + horizontal_inset,
+        available.top() + vertical_inset,
+        max(1, width - 2 * horizontal_inset),
+        max(1, height - 2 * vertical_inset),
     )
 
 
@@ -31,8 +35,8 @@ def fit_window_geometry(
         min(desired.height(), max_client.height()),
     )
     frame_size = QSize(
-        client.width() + frame_margins.left() + frame_margins.right(),
-        client.height() + frame_margins.top() + frame_margins.bottom(),
+        max(1, min(safe.width(), client.width() + frame_margins.left() + frame_margins.right())),
+        max(1, min(safe.height(), client.height() + frame_margins.top() + frame_margins.bottom())),
     )
     frame = QRect(QPoint(0, 0), frame_size)
     frame.moveCenter(safe.center())
