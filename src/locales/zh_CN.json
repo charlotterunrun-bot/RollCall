@@ -102,6 +102,7 @@
   "error.excel.formula_key_field": "关键字段包含公式。",
   "error.excel.merged_key_field": "关键字段包含合并单元格（{range}）。",
   "error.excel.invalid_status": "考勤状态 {value} 无效。",
+  "error.excel.invalid_status_future": "未来日期 {date} 存在无效考勤状态“{value}”（学号 {no}，姓名 {name}）。",
   "error.excel.invalid_sequence": "第 {row} 行第 {column} 列的序号必须是整数。",
   "error.excel.invalid_date": "日期 {date} 无效。",
   "error.excel.invalid_student_id": "第 {row} 行第 {column} 列的学号无效。",
@@ -137,5 +138,7 @@
   "template.filename": "花名册模板.xlsx",
   "template.filter": "Excel 文件 (*.xlsx *.xls)",
   "record.filter": "Excel 文件 (*.xlsx)",
-  "record.file": "记录文件"
+  "record.file": "记录文件",
+  "dialog.tolerated_status_title": "提示",
+  "dialog.tolerated_status": "检测到 {count} 处历史点名记录被人工调整（如“迟到”等非标准标记），已按原样保留并仅作提示，不影响软件使用。"
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import random
 from pathlib import Path
 
@@ -26,6 +27,8 @@ from errors import AppError
 from recovery_dialog import RecoveryDialog, choose_sheet, error_text
 from record_actions import import_record
 from window_geometry import DEFAULT_CLIENT_SIZE, fit_window_geometry, frame_fits_available
+
+logger = logging.getLogger(__name__)
 
 _FONT_FAMILIES = ["PingFang SC", "Microsoft YaHei", "Segoe UI"]
 _MARQUEE_TICK_MS = 30
@@ -89,6 +92,7 @@ class MainWindow(QMainWindow):
             raise
         if self._session_lock is not None:
             self._owns_session_lock = True
+        self._warn_tolerated_statuses()
         self.strategy, self.marquee_enabled, self.marquee_duration = self._read_settings()
         self.today = current_date_string()
         self.appeared = set()
@@ -139,6 +143,20 @@ class MainWindow(QMainWindow):
     def supplied_session_lock(self):
         """Return the lock for caller-owned handover without removing it."""
         return self._session_lock
+
+    def _warn_tolerated_statuses(self):
+        warnings = getattr(self.data, "status_warnings", None) or []
+        if not warnings:
+            return
+        logger.warning(
+            "Tolerated %d unknown attendance status(es) while loading %s",
+            len(warnings), self.data_path,
+        )
+        i18n.warning(
+            self,
+            i18n.tr("dialog.tolerated_status_title"),
+            i18n.tr("dialog.tolerated_status", count=len(warnings)),
+        )
 
     # ------------------------------------------------------------------ UI
     def _build_menu(self):

@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.2.0 — tolerant hand-edited attendance marks
+
+### v2.2.0 中文摘要
+
+v2.2.0 允许教师对已执行过的点名结果（当天及更早日期）进行人工调整：历史记录中出现的非标准出勤标记（如“迟到”）不再被视为错误导致无法打开，软件会在启动时仅提醒一次并写入日志，内容按原样保留；仅对未来日期的人工数据报错，并给出学号、姓名、日期、状态值与行列等详细信息。
+
+### v2.2.0 English summary
+
+v2.2.0 tolerates hand-edited attendance marks on executed roll-call records (today and earlier): unrecognized statuses such as "late" no longer fail the open, and are preserved with a single startup notice plus a log entry; only manual data on future dates raises an error, with student ID, name, date, value, row and column details.
+
 ## v2.1.0 — session control and compact screens
 
 ### v2.1.0 中文摘要

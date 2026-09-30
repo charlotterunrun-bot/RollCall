@@ -128,6 +128,13 @@ def _normalize_date(value):
         raise _app_error("excel.invalid_date", date=text) from exc
 
 
+def _is_future_date(iso_date: str) -> bool:
+    try:
+        return date.fromisoformat(iso_date) > date.today()
+    except ValueError:
+        return False
+
+
 def _number_text(cell, *, path, row, column, field):
     value = cell.value
     if value is None:
@@ -165,7 +172,7 @@ class Student:
 
 
 class RollCallData:
-    def __init__(self, students, date_columns, *, source_path=None, fingerprint=None, sheet_name=None, field_columns=None, storage_language="zh_CN", header_row=1):
+    def __init__(self, students, date_columns, *, source_path=None, fingerprint=None, sheet_name=None, field_columns=None, storage_language="zh_CN", header_row=1, status_warnings=None):
         self.students = students
         self.source_path = Path(source_path) if source_path is not None else None
         self.fingerprint = fingerprint
@@ -174,6 +181,7 @@ class RollCallData:
         self.date_columns = date_columns
         self.storage_language = storage_language
         self.header_row = header_row
+        self.status_warnings = status_warnings or []
 
 
 def _read_stable_bytes(path: Path):
@@ -276,6 +284,7 @@ def _parse_workbook(wb, path, sheet_name=None):
     )
     storage_language = "en_US" if english else "zh_CN"
     has_chinese_status = False
+    status_warnings = []
     students = []
     seen = set()
     for row in range(header_row + 1, ws.max_row + 1):
@@ -316,15 +325,36 @@ def _parse_workbook(wb, path, sheet_name=None):
             cell = ws.cell(row=row, column=col)
             if _is_formula(cell):
                 raise _app_error("excel.formula_key_field", path=str(path), row=row, column=col)
-            status = _normalize_status(cell.value, path=path, row=row, column=col)
-            if _fmt(cell.value) in {"到", "假", "旷"}:
+            raw_text = _fmt(cell.value)
+            try:
+                status = _normalize_status(cell.value, path=path, row=row, column=col)
+            except AppError as exc:
+                if exc.code != "excel.invalid_status":
+                    raise
+                if _is_future_date(normalized_date):
+                    # Manual data on a future date is a hard error with details.
+                    raise _app_error(
+                        "excel.invalid_status_future",
+                        value=raw_text, date=normalized_date, no=no, name=name,
+                        path=str(path), row=row, column=col,
+                    ) from exc
+                # A past or today cell was hand-edited to an unrecognized mark
+                # (e.g. "迟到"). Keep it as a recorded value and only warn once
+                # plus log, instead of failing the whole open.
+                status = raw_text
+                status_warnings.append({"no": no, "name": name, "date": normalized_date, "value": raw_text})
+                logger.warning(
+                    "Tolerated unknown attendance status %r for %s (%s) on %s",
+                    raw_text, no, name, normalized_date,
+                )
+            if raw_text in {"到", "假", "旷"}:
                 has_chinese_status = True
             if status:
                 records[normalized_date] = status
         students.append(Student(row, seq, no, name, clazz, records))
     if has_chinese_status:
         storage_language = "zh_CN"
-    return RollCallData(students, date_columns, source_path=path, sheet_name=ws.title, field_columns=field_columns, storage_language=storage_language, header_row=header_row)
+    return RollCallData(students, date_columns, source_path=path, sheet_name=ws.title, field_columns=field_columns, storage_language=storage_language, header_row=header_row, status_warnings=status_warnings)
 
 
 def load_record(path=None, *, sheet_name=None) -> RollCallData:

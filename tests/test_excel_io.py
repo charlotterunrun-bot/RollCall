@@ -138,7 +138,7 @@ def test_leading_blank_rows_keep_header_row_for_writes(tmp_path):
     ([["序号", "学号", "姓名", "班级", "2026-09-09"], [1, "S1", "One", "A", "Present"]], None),
     ([["序号", "学号", "姓名", "班级", "2026-09-09"], [1, "S1", "One", "A", "Leave"]], None),
     ([["序号", "学号", "姓名", "班级", "2026-09-09"], [1, "S1", "One", "A", "Absent"]], None),
-    ([["序号", "学号", "姓名", "班级", "2026-09-09"], [1, "S1", "One", "A", "Mystery"]], "excel.invalid_status"),
+    ([["序号", "学号", "姓名", "班级", "2099-01-01"], [1, "S1", "One", "A", "Mystery"]], "excel.invalid_status_future"),
 ])
 def test_status_aliases_are_normalized(rows, code, tmp_path):
     p = tmp_path / "record.xlsx"
@@ -149,6 +149,41 @@ def test_status_aliases_are_normalized(rows, code, tmp_path):
         assert caught.value.code == code
     else:
         assert set(load_record(p).students[0].records.values()) <= {"到", "假", "旷"}
+
+
+def test_past_unknown_status_is_tolerated(tmp_path):
+    from datetime import date, timedelta
+    past = (date.today() - timedelta(days=1)).isoformat()
+    p = tmp_path / "record.xlsx"
+    _save(p, [("record", [["序号", "学号", "姓名", "班级", past], [1, "S1", "One", "A", "Mystery"]])])
+    data = load_record(p)
+    assert data.students[0].records[past] == "Mystery"
+    assert len(data.status_warnings) == 1
+    assert data.status_warnings[0]["value"] == "Mystery"
+
+
+def test_today_unknown_status_is_tolerated(tmp_path):
+    from datetime import date
+    today = date.today().isoformat()
+    p = tmp_path / "record.xlsx"
+    _save(p, [("record", [["序号", "学号", "姓名", "班级", today], [1, "S1", "One", "A", "Mystery"]])])
+    data = load_record(p)
+    assert data.students[0].records[today] == "Mystery"
+    assert len(data.status_warnings) == 1
+
+
+def test_future_unknown_status_has_details(tmp_path):
+    from datetime import date, timedelta
+    future = (date.today() + timedelta(days=1)).isoformat()
+    p = tmp_path / "record.xlsx"
+    _save(p, [("record", [["序号", "学号", "姓名", "班级", future], [1, "S1", "One", "A", "Mystery"]])])
+    with pytest.raises(AppError) as caught:
+        load_record(p)
+    assert caught.value.code == "excel.invalid_status_future"
+    assert caught.value.params["date"] == future
+    assert caught.value.params["no"] == "S1"
+    assert caught.value.params["name"] == "One"
+    assert caught.value.params["value"] == "Mystery"
 
 
 def test_english_headers_with_chinese_statuses_use_chinese_storage(tmp_path):

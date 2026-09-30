@@ -51,6 +51,22 @@ def _prepare_data_dir(parent=None):
         return True
 
 
+def _configure_logging():
+    """Write warning-and-above logs beside the record file."""
+    import logging
+
+    log_path = Path(paths.data_dir()) / "rollcall.log"
+    try:
+        logging.basicConfig(
+            filename=str(log_path),
+            level=logging.WARNING,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
 def _show_init(app, *, session_lock=None):
     window = InitWindow(session_lock=session_lock)
     holder = {"window": window}
@@ -118,6 +134,7 @@ def main(argv=None):
     try:
         if not _prepare_data_dir():
             return 0
+        _configure_logging()
         session_lock = acquire_session_lock(paths.record_path())
         # The selected directory is now owned by this instance. Read its
         # persisted candidate language/settings only after lock handover.

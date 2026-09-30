@@ -102,6 +102,7 @@
   "error.excel.formula_key_field": "A formula was found in a key field.",
   "error.excel.merged_key_field": "A merged cell was found in a key field ({range}).",
   "error.excel.invalid_status": "The attendance status {value} is invalid.",
+  "error.excel.invalid_status_future": "Invalid attendance status \"{value}\" on future date {date} (student {no}, {name}).",
   "error.excel.invalid_sequence": "The sequence value at row {row}, column {column} must be an integer.",
   "error.excel.invalid_date": "The date {date} is invalid.",
   "error.excel.invalid_student_id": "The student ID at row {row}, column {column} is invalid.",
@@ -137,5 +138,7 @@
   "template.filename": "roster-template-en.xlsx",
   "template.filter": "Excel files (*.xlsx *.xls)",
   "record.filter": "Excel files (*.xlsx)",
-  "record.file": "Record file"
+  "record.file": "Record file",
+  "dialog.tolerated_status_title": "Notice",
+  "dialog.tolerated_status": "Detected {count} manually adjusted past attendance mark(s) (e.g. a non-standard status). They are preserved and shown here for information only; operation is unaffected."
 }
