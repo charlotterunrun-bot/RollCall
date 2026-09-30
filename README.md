@@ -1,79 +1,73 @@
-# 课堂点名软件（RollCall）
+# RollCall · 课堂点名
 
-RollCall 是桌面课堂点名工具，提供 Windows 11 x64 单文件程序，以及 macOS 15+ Apple Silicon（ARM64）应用 ZIP。英文说明见 [README.en.md](README.en.md)。
+**中文**：RollCall 是一款面向课堂的极简桌面点名工具——单文件、免安装、数据本地保存。教师可随机或按序抽取学生并记录考勤，支持多天累计与人工纠错。
 
-## 下载
+**English**: RollCall is a minimal classroom roll-call desktop tool — single-file, install-free, local data. Teachers pick students randomly or in sequence and record attendance, with multi-day accumulation and manual-correction tolerance.
 
-- Windows 11 x64：[v2.1.0 发布资产](https://github.com/charlotterunrun-bot/RollCall/releases/tag/v2.1.0)，文件名为 `RollCall-2.1.0-Windows-x64.exe`。
-- macOS 15+ Apple Silicon：[v2.1.0 发布资产](https://github.com/charlotterunrun-bot/RollCall/releases/tag/v2.1.0)，文件名为 `RollCall-2.1.0-macOS-arm64.zip`。
-- [v1.0.0 基线发布](https://github.com/charlotterunrun-bot/RollCall/releases/tag/v1.0.0)及其资产继续单独保留。
+---
 
-Windows 程序当前未签名。macOS 应用使用 ad-hoc 签名校验包完整性，未经过 Apple 公证；首次打开时，macOS 可能要求在“隐私与安全性”中允许打开。当前自动证据为 [Native CI run 34378297463](https://github.com/charlotterunrun-bot/RollCall/actions/runs/34378297463)：Windows 测试、实际打包 Windows 离屏 smoke、macOS ARM64 测试、实际打包 macOS 离屏 smoke、应用架构检查和 ad-hoc 签名检查均已通过。Windows 11 x64 也用实际 EXE 做过离屏验证。当前没有手动 Mac 桌面验收；可见 Windows 桌面点击仍待完成，因为现有显示自动化报告没有可用显示器。
+## 设计目的 · Design Purpose
 
-## 首次使用
+**中文**：为教师提供"打开即用、零配置"的点名工具，把随机/按序抽人、考勤记录、多天累计、人工纠错等重复工作收敛到一个本地小程序；不依赖网络与云服务，数据保存在运行目录，可随时用 Excel 查看与修正。
 
-1. 下载对应平台的资产，放在单独文件夹中。
-2. 首次启动点击“下载模板”。模板表头跟随当前界面语言；用 Excel 填写四列：序号 / 学号 / 姓名 / 班级。
-3. 点击“选择花名册文件”，选择填写好的 `.xlsx` 或旧式 `.xls` 花名册。软件会校验表头、学号、姓名和重复学号，然后生成 `record.xlsx`。
-4. 点击“现在开始点名啦！”，对每名学生选择“已到 / 请假 / 未到”。
+**English**: Give teachers an open-and-use, zero-config roll-call tool that folds repetitive work — random/sequential picking, attendance recording, multi-day accumulation, and manual correction — into one local utility. No network or cloud required; data stays in the run directory and can be reviewed or fixed in Excel anytime.
 
-每名学生每天最多一条考勤记录。当日日期列已有任何有效记录的学生会被跳过；当天所有人都已记录后结束，不能当天再点完整的第二轮。进度来自当前工作簿：恢复旧工作簿或手动删除当天记录，会改变当天剩余的学生。
+## 设计思路 · Design Philosophy
 
-启用走马灯时，学生信息会快速滚动，并在设定时长后停下，之后才能点击考勤按钮。切换语言只翻译界面，不会重新抽选、写入考勤或重置进度。
+**中文**：
+- 极简交付：单文件程序，自带全部运行库，免安装。
+- 分层架构：表现层（UI）/ 业务逻辑（规则）/ 数据（Excel 读写）分离，便于测试与扩展。
+- 策略模式：四种点名规则统一为"下一名点谁"的策略，配置化切换。
+- 本地优先：考勤写 `record.xlsx`、设置写 `config.json`；崩溃安全（原子写 + 备份 + 恢复）。
+- 表现与逻辑解耦：走马灯动画滚动的是完整名单，真正被选中的学生由策略决定，互不干扰。
 
-底部可选勾选“本次点名结束”。提交当前学生时，软件会先成功保存记录，再显示一次结束提示；点击“确定”后退出。下次启动会从工作簿继续剩余学生。普通屏幕默认客户区为 640x480，窗口可以放大；可用空间较短的小屏会自动适配并允许滚动，确保底部控件仍可操作。
+**English**:
+- Minimal delivery: a single-file program bundling all runtime; no install.
+- Layered architecture: UI / business rules / data (Excel) are separated for testing and extension.
+- Strategy pattern: the four rules collapse into one "who's next" strategy, switched via configuration.
+- Local first: attendance to `record.xlsx`, settings to `config.json`; crash-safe (atomic write + backup + restore).
+- Presentation vs logic decoupled: the marquee scrolls the full roster, while the actual pick is decided by the strategy.
 
-## 四种点名规则
+## 主要功能 · Key Features
 
-在“配置 → 点名规则…”中选择：
+**中文**：
+- 单文件免安装（Windows x64 / macOS ARM64）。
+- 花名册导入与校验（`.xlsx` / `.xls`，表头、学号、姓名、重复校验）。
+- 四种点名规则：随机 / 按序号 × 计重复 / 不计重复。
+- 走马灯抽选动画（可开关、可调自动停下时长）。
+- 考勤写入 Excel 日期列（`YYYY-MM-DD`），多天累计；当天已记录学生自动跳过。
+- 人工纠错容忍（v2.2）：历史与当天的非标准标记（如"迟到"）仅提醒一次并记日志，不影响使用；仅未来日期的人工数据报错并给出详细信息。
+- 中英双语界面，可切换并持久化。
+- 崩溃安全存储：原子写入、多级备份、恢复；会话锁、启动恢复、数据目录可配置。
 
-- **每次随机计重复**：从当天尚未记录的学生中随机选择，并优先选择其他日期非空考勤记录最少的学生。“到 / 假 / 旷”每种有效状态都计一次。
-- **每次随机不计重复**：从当天尚未记录的学生中随机选择，不考虑其他日期的记录数。
-- **按序号顺序不计重复**：按花名册顺序选择当天尚未记录的学生，不考虑其他日期的记录数。
-- **按序号顺序计重复**：优先选择其他日期记录数最少的学生，再按花名册顺序选择。
+**English**:
+- Single-file, install-free (Windows x64 / macOS ARM64).
+- Roster import and validation (`.xlsx` / `.xls`; headers, student ID, name, duplicates).
+- Four roll-call rules: random / sequence × balance / no-balance.
+- Marquee selection animation (toggleable, adjustable auto-stop duration).
+- Attendance written into Excel date columns (`YYYY-MM-DD`), accumulated across days; students already recorded today are skipped.
+- Manual-correction tolerance (v2.2): non-standard marks (e.g. "late") on past and today's records only raise a one-time notice plus a log entry; only future-date manual data errors, with details.
+- Bilingual UI (Chinese / English), switchable and persisted.
+- Crash-safe storage: atomic writes, tiered backups, restore; session lock, startup recovery, configurable data directory.
 
-四种规则都会排除当天已有记录的学生。“计重复”统计的是日期不等于今天的其他日期记录，所有有效状态各计一次；不是只统计早于今天的日期。走马灯可单独开关；自动停下时长为 100～10000 毫秒的整数，默认 500 毫秒。
+## 版本更新历史 · Version History
 
-## 语言与 Excel 存储
+| 版本 | 日期 | 主要变更 |
+|---|---|---|
+| v2.2.0 | 2026-09-30 | 容忍人工改动的出勤标记：历史/当天仅提醒 + 日志，未来日期报错并给出详细信息 |
+| v2.1.0 | 2026-09-10 | 新增"本次点名结束"会话控制；小屏窗口自适应与滚动 |
+| v2.0.0 | 2026-09-10 | 四种规则、走马灯、中英双语、崩溃安全存储/备份/恢复、多平台打包 |
+| v1.0.0 | 2026-09-09 | 基线：单文件点名 + 考勤记录 |
 
-“配置 → 语言”可在简体中文和 English 之间切换，选择保存在 `config.json`。语言切换不会改变当前学生、计时器或点名进度。新模板使用所选语言；中文新记录使用中文表头和状态“到 / 假 / 旷”，英文新记录使用英文表头和状态“Present / Leave / Absent”。读取已有工作簿时，表头及已有状态决定后续写入的存储语言；读取时接受这两组状态别名。
+| Version | Date | Changes |
+|---|---|---|
+| v2.2.0 | 2026-09-30 | Tolerate hand-edited attendance marks: past/today → notice + log; future → error with details |
+| v2.1.0 | 2026-09-10 | "End this roll call session" control; compact-screen window fit and scrolling |
+| v2.0.0 | 2026-09-10 | Four rules, marquee, bilingual UI, crash-safe storage/backup/restore, multi-platform packaging |
+| v1.0.0 | 2026-09-09 | Baseline: single-file roll call + attendance recording |
 
-`record.xlsx` 前四列是学生信息，后面是 `YYYY-MM-DD` 格式的日期列；每个学生在同一日期最多一条记录。`config.json` 保存四种规则、走马灯开关、停下时长和界面语言。
+---
 
-## 数据目录与备份
+**下载 · Download**：请见 [Releases](https://github.com/charlotterunrun-bot/RollCall/releases)。
 
-Windows 源码运行和 Windows EXE 默认将 `RollCallRecord` 放在 EXE 旁边或当前启动目录。macOS 打包应用默认使用 `~/Library/Application Support/RollCall/RollCallRecord`。默认目录不可写时，启动界面允许选择其他文件夹供本次运行使用；可通过“文件 → 打开数据文件夹”查看当前目录，不能保证备用目录选择在下次启动时持久保存。
-
-备份位于 `record.xlsx` 旁边的隐藏目录 `.rollcall-backups`：
-
-- 每次考勤记录替换尝试前创建自动备份；每次成功保存后，只清理到最新 50 份 `.auto.bak`。
-- 保存尝试失败时已经创建的自动备份会保留，数量可以暂时超过 50，直到下一次成功保存时再清理。
-- 升级快照 `.upgrade.bak`、手工备份 `.manual.bak` 和恢复前副本 `.pre_restore.bak` 永久保留，不参与自动清理。
-
-手工备份使用“文件 → 手动备份”。恢复时打开“文件 → 恢复备份…”，选择有效备份并确认；软件会先把当前工作簿保存为恢复前副本，再校验并替换记录。恢复后请检查当天记录，因为恢复的文件决定当天进度。
-
-## 可兼容的 Excel 编辑与明确拒绝情况
-
-关闭 RollCall 后，可以用 Excel 手工编辑工作簿。请保留四个必需表头、每个学生一行、ISO 日期表头和有效状态。学号必须非空且唯一，姓名必须非空；必需字段和日期列不要使用公式或合并单元格。中文状态“到 / 假 / 旷”和英文状态“Present / Leave / Absent”都可读取。
-
-以下情况会被拒绝并保留原文件供恢复：无法读取的文件；缺少或重复必需表头；重复日期或含歧义日期格式；多个可用工作表而未明确选择；重复或空学号；空姓名；关键字段或日期列含公式；关键区域合并；无效状态；不支持的工作簿结构。记录文件使用 `.xlsx`；`.xls` 仅用于花名册导入。Excel 正在打开或其他程序修改文件时，软件会检测冲突并要求重新读取；不要在保存考勤期间编辑工作簿。
-
-## 从 v1.0.0 升级到 v2.1.0
-
-1. 结束或停止 v1 并关闭程序；在替换文件前单独复制 v1 的 `record.xlsx`。
-2. 下载对应平台的 v2 资产。Windows 将 v2 EXE 放在原有 `RollCallRecord` 文件夹旁；macOS 启动 v2 后使用默认 Application Support 目录，若程序提示目录不可写则选择存放记录的目录。
-3. 如果 v2 能直接读取旧工作簿，它会保留已有记录，并在第一次 v2 考勤写入前创建按旧文件内容保护的永久升级快照。如果旧工作簿位于其他位置，使用“文件 → 导入已有记录…”，选择旧 `.xlsx`，确认替换，再检查学生与当天记录。
-4. 在 v2 中继续点名；确认数据无误前保留 v1 副本及 [v1.0.0 发布](https://github.com/charlotterunrun-bot/RollCall/releases/tag/v1.0.0)。
-
-Mac 导入旧记录：把旧 `record.xlsx` 放在可访问的位置，启动 v2，选择“文件 → 导入已有记录…”，选中旧文件并确认替换。源工作簿不会被修改。
-
-## 开发与打包
-
-源代码位于 `src/`，唯一版本源是 `src/version.py`。当前软件版本为 `2.1.0`；Windows 四段文件版本为 `2.1.0.0`，产品和包版本字符串为 `2.1.0`。使用 Python 3.12 和仓库中的锁定依赖：
-
-```powershell
-.venv\Scripts\python.exe -m pytest -q
-.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean RollCall.spec
-```
-
-平台脚本会生成 `RollCall-2.1.0-Windows-x64.exe` 和 `RollCall-2.1.0-macOS-arm64.zip`。公开仓库不得提交真实名单、考勤、配置、备份、凭据、虚拟环境或临时证据。
+**更多细节 · More details**：见 [CHANGELOG.md](CHANGELOG.md)。
