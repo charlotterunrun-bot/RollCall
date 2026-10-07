@@ -68,6 +68,18 @@
 
 ---
 
-**下载 · Download**：请见 [Releases](https://github.com/charlotterunrun-bot/RollCall/releases)。
+## 下载 · Download
+
+最新版 **v2.2.0**：
+
+- **Windows x64（免安装单文件，约 58.7 MB）**：[`RollCall-2.2.0-Windows-x64.exe`](https://github.com/charlotterunrun-bot/RollCall/releases/download/v2.2.0/RollCall-2.2.0-Windows-x64.exe)
+- SHA256：`497D5788D5A00CE1074371190163FA2E63C6F241DAB5844602C5A6996D7A371B`
+- 其他版本：[Releases 列表](https://github.com/charlotterunrun-bot/RollCall/releases)
+
+**Latest v2.2.0**：
+
+- **Windows x64 (portable single file, ~58.7 MB)**: [`RollCall-2.2.0-Windows-x64.exe`](https://github.com/charlotterunrun-bot/RollCall/releases/download/v2.2.0/RollCall-2.2.0-Windows-x64.exe)
+- SHA256: `497D5788D5A00CE1074371190163FA2E63C6F241DAB5844602C5A6996D7A371B`
+- Other versions: [Releases](https://github.com/charlotterunrun-bot/RollCall/releases)
 
 **更多细节 · More details**：见 [CHANGELOG.md](CHANGELOG.md)。
